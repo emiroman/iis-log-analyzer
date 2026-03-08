@@ -1,4 +1,3 @@
-//const MAX_ROWS = 20000;
 let rows = [];
 let filteredRows = [];
 let charts = {};
@@ -16,36 +15,42 @@ document.getElementById("fileInput").addEventListener("change", function (e) {
     console.log("No hay archivo seleccionado.");
     return;
   }
+  showLoading("Analizando archivo de log...");
   const reader = new FileReader();
   reader.onload = async function (evt) {
-    showLoading("Analizando archivo de log...");
-    await new Promise((r) => setTimeout(r, 100));
+    await new Promise((r) => setTimeout(r, 10));
     parseLog(evt.target.result);
     document.getElementById("dashboard").style.display = "block";
     hideLoading();
-    console.log("*** Carga finalizada ***");
   };
   reader.readAsText(file);
-
-  document.addEventListener("DOMContentLoaded", () => {
-    document.querySelector("#logTable").addEventListener("click", function (e) {
-      if (e.target.classList.contains("ip-link")) {
-        e.preventDefault();
-        filterIP(e.target.dataset.ip);
-      }
-    });
-  });
 });
 
 const searchInput = document.getElementById("searchBox");
 searchInput.addEventListener("input", filterLogs);
 
 function parseLog(text) {
+
   rows = [];
   fields = [];
+
   const lines = text.split("\n");
+
+  // Crear formatter UNA sola vez (gran mejora)
+  const formatter = new Intl.DateTimeFormat("es-AR", {
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hour12: false
+  });
+
   for (let line of lines) {
+
     line = line.trim();
+
     if (line.startsWith("#Fields:")) {
       fields = line.replace("#Fields:", "").trim().split(" ");
       continue;
@@ -53,28 +58,28 @@ function parseLog(text) {
 
     if (line.startsWith("#") || line === "") continue;
 
-    let parts = line.split(" ");
-    let obj = {};
-    fields.forEach((f, i) => (obj[f] = parts[i] || ""));
-    let ua = decodeURIComponent((obj["cs(User-Agent)"] || "").replace(/\+/g, " "));
-    let uri = obj["cs-uri-stem"] || "";
-    let type = detectType(ua, uri);
+    const parts = line.split(" ");
+    const obj = {};
 
-    const utc = new Date(`${obj["date"]}T${obj["time"]}Z`);
+    fields.forEach((f, i) => {
+      obj[f] = parts[i] || "";
+    });
+
+    let ua = obj["cs(User-Agent)"] || "";
+
+    // Decodificar solo si es necesario
+    if (ua.includes("%")) {
+      ua = decodeURIComponent(ua.replace(/\+/g, " "));
+    }
+
+    const uri = obj["cs-uri-stem"] || "";
+    const type = detectType(ua, uri);
+
+    // Crear fecha UTC
+    const utc = new Date(obj["date"] + "T" + obj["time"] + "Z");
 
     rows.push({
-      date: utc
-        .toLocaleString("es-AR", {
-          timeZone: "America/Argentina/Buenos_Aires",
-          day: "2-digit",
-          month: "2-digit",
-          year: "numeric",
-          hour: "2-digit",
-          minute: "2-digit",
-          second: "2-digit",
-          hour12: false,
-        })
-        .replace(",", ""),
+      date: formatter.format(utc), // reutiliza formatter
       cip: obj["c-ip"],
       method: obj["cs-method"],
       uri,
@@ -82,9 +87,11 @@ function parseLog(text) {
       version: obj["cs-version"],
       ua,
       type,
-      host: obj["cs-host"] || "",
+      host: obj["cs-host"] || ""
     });
+
   }
+
   filteredRows = [...rows];
 
   renderAll();
@@ -163,62 +170,6 @@ function renderAll() {
   renderCharts();
 }
 
-// function renderTable(data) {
-//   const tbody = document.querySelector("#logTable tbody");
-//   tbody.innerHTML = "";
-
-//   data.slice(0, MAX_ROWS).forEach((r) => {
-//     let rowClass = "";
-
-//     if (r.type === "ATTACK") rowClass = "attack";
-//     if (r.type === "SCANNER") rowClass = "scanner";
-//     if (r.type === "BOT") rowClass = "bot";
-
-//     let statusColor = "bg-secondary";
-
-//     if (r.status.startsWith("2")) statusColor = "bg-success";
-//     if (r.status.startsWith("4")) statusColor = "bg-warning text-dark";
-//     if (r.status.startsWith("5")) statusColor = "bg-danger";
-
-//     let methodClass = "method-get";
-
-//     if (r.method === "POST") methodClass = "method-post";
-//     if (r.method === "PUT") methodClass = "method-put";
-//     if (r.method === "DELETE") methodClass = "method-delete";
-//     if (r.method === "HEAD") methodClass = "method-head";
-
-//     const tr = document.createElement("tr");
-
-//     tr.innerHTML = `
-// <td style="min-width:160px;">${r.date}</td>
-// <td><a href="#" class="ip-link" data-ip="${r.cip}">${r.cip}</a></td>
-// <td>${r.host}</td>
-// <td><span class="badge ${methodClass}">${r.method}</span></td>
-// <td>${r.uri}</td>
-// <td><span class="badge ${statusColor}">${r.status}</span></td>
-// <td>${r.version || ""}</td>
-// <td>${r.type}</td>
-// <td class="text-truncate" style="max-width:500px">${r.ua}</td>
-// `;
-
-//     tr.className = rowClass;
-
-//     //tbody.appendChild(tr);
-//     const fragment = document.createDocumentFragment();
-//     fragment.appendChild(tr);
-//   });
-
-//   //document.getElementById("totalRows").innerText = "Total registros: " + data.length;
-//   document.getElementById("totalRows").innerText = "Total registros: " + data.length + " (mostrando " + Math.min(data.length, MAX_ROWS) + ")";
-
-//   document.querySelector("#logTable").addEventListener("click", function(e) {
-//   if (e.target.classList.contains("ip-link")) {
-//     e.preventDefault();
-//     filterIP(e.target.dataset.ip);
-//   }
-// });
-// }
-
 function renderTable(data) {
   const tbody = document.querySelector("#logTable tbody");
   tbody.innerHTML = "";
@@ -268,6 +219,13 @@ function renderTable(data) {
   tbody.appendChild(fragment);
 
   document.getElementById("totalRows").innerText = "Total registros: " + data.length + " (mostrando " + Math.min(data.length, MAX_ROWS) + ")";
+
+  document.querySelector("#logTable").addEventListener("click", function (e) {
+    if (e.target.classList.contains("ip-link")) {
+      e.preventDefault();
+      filterIP(e.target.dataset.ip);
+    }
+  });
 }
 
 function filterIP(ip) {
@@ -293,10 +251,14 @@ function buildIpRanking() {
     stats[ip].uris.add(r.uri);
   });
 
+  let ordenado = Object.entries(stats).sort((a, b) => b[1].req - a[1].req);
+
+  let statsOrdenado = Object.fromEntries(Object.entries(stats).sort((a, b) => b[1].req - a[1].req));
+
   let tbody = document.getElementById("ipRanking");
   tbody.innerHTML = "";
 
-  Object.entries(stats).forEach(([ip, s]) => {
+  Object.entries(statsOrdenado).forEach(([ip, s]) => {
     let score = 0;
 
     if (s.req > 50) score += 10;
@@ -316,18 +278,26 @@ function buildIpRanking() {
     }
 
     let tr = document.createElement("tr");
-
+    tr.classList.add("text-center");
     tr.innerHTML = `
-<td><a href="#" onclick="filterIP('${ip}')">${ip}</a></td>
+<td><a href="#" class="ip-link" data-ip="${ip}">${ip}</a></td>
 <td>${s.req}</td>
 <td>${s.e401}</td>
 <td>${s.e400}</td>
 <td>${s.uris.size}</td>
 <td>${score}</td>
-<td class="${riskClass}">${risk}</td>
+<td class="${riskClass}">
+<span>${risk}</span>
+</td>
 `;
-
     tbody.appendChild(tr);
+  });
+
+  document.querySelector("#tableRanking").addEventListener("click", function (e) {
+    if (e.target.classList.contains("ip-link")) {
+      e.preventDefault();
+      filterIP(e.target.dataset.ip);
+    }
   });
 }
 
@@ -347,28 +317,6 @@ function renderSummary() {
 </div>
 `;
 }
-
-// function renderCharts() {
-//   let status = {},
-//     method = {},
-//     hours = {};
-//   rows.forEach((r) => {
-//     status[r.status] = (status[r.status] || 0) + 1;
-//     method[r.method] = (method[r.method] || 0) + 1;
-
-//     let h = r.date.substring(11, 13);
-//     hours[h] = (hours[h] || 0) + 1;
-//   });
-
-//   for (let i = 0; i < 24; i++) {
-//     let h = i.toString().padStart(2, "0");
-//     if (!hours[h]) hours[h] = 0;
-//   }
-
-//   drawChart("statusChart", "pie", status);
-//   drawChart("methodChart", "bar", method);
-//   drawChart("timelineChart", "line", hours);
-// }
 
 function renderCharts() {
   let status = {},
