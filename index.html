@@ -1,0 +1,180 @@
+<!DOCTYPE html>
+<html lang="es">
+
+<head>
+    <meta charset="UTF-8">
+    <link rel="icon" href="favicon.ico">
+    <title>Visor de LOGs IIS</title>
+
+    <link rel="stylesheet" href="style.css">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+    <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
+    <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
+
+    <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster/dist/MarkerCluster.css" />
+    <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster/dist/MarkerCluster.Default.css" />
+
+    <script src="https://unpkg.com/leaflet.markercluster/dist/leaflet.markercluster.js"></script>
+    <script src="https://unpkg.com/leaflet.heat/dist/leaflet-heat.js"></script>
+
+    <style>
+        
+    </style>
+
+</head>
+
+<body class="bg-light">
+
+    <div class="container-fluid py-4">
+
+        <div class="d-flex justify-content-between mb-4">
+            <h2 class="text-black">Visor de LOGs IIS </h2>
+        </div>
+
+        <div class="card mb-4">
+            <div class="card-body">
+                <div class="upload-box">
+                    <h5>Cargar archivo</h5>
+                    <input type="file" id="fileInput" class="form-control mt-3" accept=".log">
+                    <small class="card-header-pills">
+                        Seleccionar un archivo de tipo .log
+                    </small>
+                </div>
+            </div>
+        </div>
+
+        <div id="dashboard" style="display:none">
+            <div class="card mb-3">
+                <div class="card-body">
+                    <input type="text" class="form-control" placeholder="Buscar en logs..." id="searchBox">
+                </div>
+            </div>
+
+            <div class="card mb-4">
+                <div class="card-header text-black">
+                    <strong>Logs</strong>
+                </div>
+                <div class="table-container">
+                    <table class="table table-striped table-hover table-sm" id="logTable">
+                        <thead class="table-dark">
+                            <tr>
+                                <th>Fecha</th>
+                                <!-- <th>Hora</th> -->
+                                <th>IP Origen</th>
+                                <th>Host destino</th>
+                                <th>Método</th>
+                                <th>URI</th>
+                                <th>Status</th>
+                                <th>Protocolo</th>
+                                <th>Tipo</th>
+                                <th>UserAgent</th>
+                            </tr>
+                        </thead>
+                        <tbody></tbody>
+                    </table>
+                </div>
+                <strong id="totalRows"></strong>
+            </div>
+
+            <div class="card mb-4">
+                <div class="card-header"><strong>Ranking de IPs sospechosas</strong></div>
+                <div class="table-container table-responsive">
+                    <table class="table table-sm">
+                        <thead class="table-dark">
+                            <tr>
+                                <th>IP</th>
+                                <th>Requests</th>
+                                <th>401</th>
+                                <th>400</th>
+                                <th>URIs</th>
+                                <th>Score</th>
+                                <th>Riesgo</th>
+                            </tr>
+                        </thead>
+                        <tbody id="ipRanking"></tbody>
+                    </table>
+                </div>
+            </div>
+
+            <div class="card mb-4">
+                <div class="card-body" id="summary"></div>
+            </div>
+
+            <div class="row">
+                <div class="col-lg-4 mb-4">
+                    <div class="card">
+                        <div class="card-header"><strong>Códigos de Estado</strong></div>
+                        <div class="card-body">
+                            <canvas id="statusChart"></canvas>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="col-lg-4 mb-4">
+                    <div class="card">
+                        <div class="card-header"><strong>Métodos HTTP</strong></div>
+                        <div class="card-body">
+                            <canvas id="methodChart"></canvas>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="col-lg-4 mb-4">
+                    <div class="card">
+                        <div class="card-header"><strong>Peticiones por Hora</strong></div>
+                        <div class="card-body">
+                            <canvas id="timelineChart"></canvas>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="row">
+                <div class="col-lg-6 col-sm-12 mb-4">
+                    <div class="card mb-4">
+                        <div class="card-header"><strong>Estadísticas de Ataques</strong></div>
+                        <div class="card-body">
+                            <canvas id="attackChart"></canvas>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-lg-6 col-sm-12 mb-4">
+                    <div class="card mb-4">
+                        <div class="card-header"><strong>Alertas de Seguridad</strong></div>
+                        <div class="card-body table-container">
+                            <ul id="alerts" class="list-group"></ul>
+                        </div>
+                    </div>
+                </div>
+
+            </div>
+
+
+            <div class="row">
+                <div class="col-lg-12 col-sm-12 mb-4">
+                    <div class="card mb-4">
+                        <div class="card-header"><strong>Mapa de Origen de IPs</strong></div>
+                        <div class="card-body">
+                            <div id="map"></div>
+                        </div>
+                    </div>
+                </div>
+
+
+            </div>
+
+        </div>
+
+    </div>
+    <div id="loadingOverlay">
+        <div class="loading-box text-center">
+            <div class="spinner-border text-light mb-3" style="width:4rem;height:4rem"></div>
+            <h5 id="loadingText">Procesando log...</h5>
+        </div>
+    </div>
+
+    <script src="index.js"></script>
+</body>
+
+</html>
