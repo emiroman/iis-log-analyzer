@@ -102,6 +102,8 @@ Due to browser limitations:
 * more complex filters
 * multiple file analysis
 
+## Codebase map
+![Codebase](codebase-map.png)
 ## Screenshots
 
 ### Overview

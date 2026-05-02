@@ -8,6 +8,12 @@ let markerCluster;
 let heatPoints = [];
 let geoCache = {};
 
+const searchBox = document.getElementById("searchBox");
+const statusFilter = document.getElementById("statusFilter");
+
+searchBox.addEventListener("input", applyFilters);
+statusFilter.addEventListener("change", applyFilters);
+
 document.getElementById("fileInput").addEventListener("change", function (e) {
   console.log("*** Iniciando carga ***");
   const file = e.target.files[0];
@@ -22,6 +28,7 @@ document.getElementById("fileInput").addEventListener("change", function (e) {
     parseLog(evt.target.result);
     document.getElementById("dashboard").style.display = "block";
     hideLoading();
+    populateStatusFilter(filteredRows);
   };
   reader.readAsText(file);
 });
@@ -30,7 +37,6 @@ const searchInput = document.getElementById("searchBox");
 searchInput.addEventListener("input", filterLogs);
 
 function parseLog(text) {
-
   rows = [];
   fields = [];
 
@@ -44,11 +50,10 @@ function parseLog(text) {
     hour: "2-digit",
     minute: "2-digit",
     second: "2-digit",
-    hour12: false
+    hour12: false,
   });
 
   for (let line of lines) {
-
     line = line.trim();
 
     if (line.startsWith("#Fields:")) {
@@ -87,9 +92,8 @@ function parseLog(text) {
       version: obj["cs-version"],
       ua,
       type,
-      host: obj["cs-host"] || ""
+      host: obj["cs-host"] || "",
     });
-
   }
 
   filteredRows = [...rows];
@@ -231,6 +235,7 @@ function renderTable(data) {
 function filterIP(ip) {
   document.getElementById("searchBox").value = ip;
   filterLogs();
+  populateStatusFilter(filteredRows);
 }
 
 function buildIpRanking() {
@@ -547,4 +552,42 @@ function showLoading(text = "Procesando...") {
 
 function hideLoading() {
   document.getElementById("loadingOverlay").style.display = "none";
+}
+function applyFilters() {
+  const searchText = searchBox.value.toLowerCase();
+  const selectedStatus = statusFilter.value;
+
+  const filtered = filteredRows.filter((log) => {
+    const matchesSearch = Object.values(log).join(" ").toLowerCase().includes(searchText);
+
+    const matchesStatus = !selectedStatus || log.status == selectedStatus;
+
+    return matchesSearch && matchesStatus;
+  });
+  populateStatusFilter(filtered);
+  renderTable(filtered);
+}
+
+function populateStatusFilter(logs) {
+  const select = document.getElementById("statusFilter");
+
+  select.innerHTML = "";
+
+  const defaultOption = document.createElement("option");
+  defaultOption.value = "";
+  defaultOption.textContent = "Todos los estados";
+  select.appendChild(defaultOption);
+
+  const statusSet = new Set(logs.map((l) => l.status));
+
+  const sortedStatus = Array.from(statusSet).sort();
+  console.log(statusSet.size);
+  if (statusSet.size > 1) {
+    sortedStatus.forEach((status) => {
+      const option = document.createElement("option");
+      option.value = status;
+      option.textContent = status;
+      select.appendChild(option);
+    });
+  }
 }

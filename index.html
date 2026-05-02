@@ -19,10 +19,6 @@
     <script src="https://unpkg.com/leaflet.markercluster/dist/leaflet.markercluster.js"></script>
     <script src="https://unpkg.com/leaflet.heat/dist/leaflet-heat.js"></script>
 
-    <style>
-        
-    </style>
-
 </head>
 
 <body class="bg-light">
@@ -35,7 +31,7 @@
 
         <div class="card mb-4">
             <div class="card-body">
-                <div class="upload-box">
+                <div class="upload-box pb-2">
                     <h5>Cargar archivo</h5>
                     <input type="file" id="fileInput" class="form-control mt-3" accept=".log">
                     <small class="card-header-pills">
@@ -48,7 +44,16 @@
         <div id="dashboard" style="display:none">
             <div class="card mb-3">
                 <div class="card-body">
-                    <input type="text" class="form-control" placeholder="Buscar en logs..." id="searchBox">
+                    <div class="row g-2">
+                        <div class="col-md-8">
+                            <input type="text" class="form-control" placeholder="Buscar en logs..." id="searchBox">
+                        </div>
+                        <div class="col-md-4">
+                            <select id="statusFilter" class="form-select">
+                                <option value="">Todos los status</option>
+                            </select>
+                        </div>
+                    </div>
                 </div>
             </div>
 
