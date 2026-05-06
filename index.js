@@ -10,9 +10,11 @@ let geoCache = {};
 
 const searchBox = document.getElementById("searchBox");
 const statusFilter = document.getElementById("statusFilter");
+const methodFilter = document.getElementById("methodFilter");
 
 searchBox.addEventListener("input", applyFilters);
 statusFilter.addEventListener("change", applyFilters);
+methodFilter.addEventListener("change", applyFilters);
 
 document.getElementById("fileInput").addEventListener("change", function (e) {
   console.log("*** Iniciando carga ***");
@@ -28,7 +30,7 @@ document.getElementById("fileInput").addEventListener("change", function (e) {
     parseLog(evt.target.result);
     document.getElementById("dashboard").style.display = "block";
     hideLoading();
-    populateStatusFilter(filteredRows);
+    populateFilters(filteredRows);
   };
   reader.readAsText(file);
 });
@@ -235,7 +237,7 @@ function renderTable(data) {
 function filterIP(ip) {
   document.getElementById("searchBox").value = ip;
   filterLogs();
-  populateStatusFilter(filteredRows);
+  //populateFilters(filteredRows);
 }
 
 function buildIpRanking() {
@@ -246,17 +248,19 @@ function buildIpRanking() {
 
     if (isPrivateIP(ip)) return;
 
-    if (!stats[ip]) stats[ip] = {req: 0, e401: 0, e400: 0, uris: new Set()};
+    if (!stats[ip]) stats[ip] = {req: 0, e400: 0, e401: 0,e403: 0,e404: 0, uris: new Set()};
 
     stats[ip].req++;
 
-    if (r.status === "401") stats[ip].e401++;
     if (r.status === "400") stats[ip].e400++;
+    if (r.status === "401") stats[ip].e401++;
+    if (r.status === "403") stats[ip].e403++;
+    if (r.status === "404") stats[ip].e404++;
 
     stats[ip].uris.add(r.uri);
   });
 
-  let ordenado = Object.entries(stats).sort((a, b) => b[1].req - a[1].req);
+  //let ordenado = Object.entries(stats).sort((a, b) => b[1].req - a[1].req);
 
   let statsOrdenado = Object.fromEntries(Object.entries(stats).sort((a, b) => b[1].req - a[1].req));
 
@@ -269,6 +273,9 @@ function buildIpRanking() {
     if (s.req > 50) score += 10;
     score += s.e401 * 3;
     score += s.e400;
+    score += s.e403 * 2;
+    score += s.e404 * 2;
+
     if (s.uris.size > 20) score += 5;
 
     let risk = "Low";
@@ -277,7 +284,7 @@ function buildIpRanking() {
     if (score > 50) {
       risk = "High";
       riskClass = "risk-high";
-    } else if (score > 20) {
+    } else if (score >= 20) {
       risk = "Medium";
       riskClass = "risk-medium";
     }
@@ -287,8 +294,10 @@ function buildIpRanking() {
     tr.innerHTML = `
 <td><a href="#" class="ip-link" data-ip="${ip}">${ip}</a></td>
 <td>${s.req}</td>
-<td>${s.e401}</td>
 <td>${s.e400}</td>
+<td>${s.e401}</td>
+<td>${s.e403}</td>
+<td>${s.e404}</td>
 <td>${s.uris.size}</td>
 <td>${score}</td>
 <td class="${riskClass}">
@@ -556,32 +565,44 @@ function hideLoading() {
 function applyFilters() {
   const searchText = searchBox.value.toLowerCase();
   const selectedStatus = statusFilter.value;
+  const selectedMethod = methodFilter.value;
 
   const filtered = filteredRows.filter((log) => {
     const matchesSearch = Object.values(log).join(" ").toLowerCase().includes(searchText);
 
     const matchesStatus = !selectedStatus || log.status == selectedStatus;
 
-    return matchesSearch && matchesStatus;
+    const matchesMethod = !selectedMethod || log.method == selectedMethod;
+
+    return matchesSearch && matchesStatus && matchesMethod;
   });
-  populateStatusFilter(filtered);
+  //populateFilters(filtered);
   renderTable(filtered);
 }
 
-function populateStatusFilter(logs) {
+function populateFilters(logs) {
   const select = document.getElementById("statusFilter");
+  const selectMethod = document.getElementById("methodFilter");
 
   select.innerHTML = "";
+  selectMethod.innerHTML = "";
 
   const defaultOption = document.createElement("option");
   defaultOption.value = "";
   defaultOption.textContent = "Todos los estados";
   select.appendChild(defaultOption);
+  
+  const defaultOptionMethod = document.createElement("option");
+  defaultOptionMethod.value = "";
+  defaultOptionMethod.textContent = "Todos los metodos";
+  selectMethod.appendChild(defaultOptionMethod);
 
   const statusSet = new Set(logs.map((l) => l.status));
 
+  const methodSet = new Set(logs.map((l) => l.method));
+  const sortedMethod = Array.from(methodSet).sort();
+
   const sortedStatus = Array.from(statusSet).sort();
-  console.log(statusSet.size);
   if (statusSet.size > 1) {
     sortedStatus.forEach((status) => {
       const option = document.createElement("option");
@@ -590,4 +611,11 @@ function populateStatusFilter(logs) {
       select.appendChild(option);
     });
   }
+
+  sortedMethod.forEach((method) => {
+    const option = document.createElement("option");
+    option.value = method;
+    option.textContent = method;
+    selectMethod.appendChild(option);
+  });
 }

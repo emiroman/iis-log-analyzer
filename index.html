@@ -45,12 +45,17 @@
             <div class="card mb-3">
                 <div class="card-body">
                     <div class="row g-2">
-                        <div class="col-md-8">
+                        <div class="col-md-6">
                             <input type="text" class="form-control" placeholder="Buscar en logs..." id="searchBox">
                         </div>
-                        <div class="col-md-4">
+                        <div class="col-md-3">
+                            <select id="methodFilter" class="form-select">
+                                <option value="">Todos los metodos</option>
+                            </select>
+                        </div>
+                        <div class="col-md-3">
                             <select id="statusFilter" class="form-select">
-                                <option value="">Todos los status</option>
+                                <option value="">Todos los estados</option>
                             </select>
                         </div>
                     </div>
@@ -91,8 +96,10 @@
                             <tr>
                                 <th class="text-center">IP</th>
                                 <th class="text-center">Requests</th>
-                                <th class="text-center">401</th>
                                 <th class="text-center">400</th>
+                                <th class="text-center">401</th>
+                                <th class="text-center">403</th>
+                                <th class="text-center">404</th>
                                 <th class="text-center">URIs</th>
                                 <th class="text-center">Score</th>
                                 <th class="text-center">Riesgo</th>
