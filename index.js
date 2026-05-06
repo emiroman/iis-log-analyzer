@@ -343,7 +343,7 @@ function renderCharts() {
     // Conteo por método
     method[r.method] = (method[r.method] || 0) + 1;
     // Obtener la hora (00-23)
-    let h = r.date.substring(11, 13);
+    let h = r.date.substring(12, 14);
     hours[h] = (hours[h] || 0) + 1;
   });
 
@@ -355,6 +355,7 @@ function renderCharts() {
 
   // Ordenar las horas
   hours = Object.fromEntries(Object.entries(hours).sort((a, b) => a[0].localeCompare(b[0])));
+  console.log(hours);
 
   drawChart("statusChart", "pie", status);
   drawChart("methodChart", "bar", method);
@@ -388,7 +389,7 @@ function drawChart(id, type, data) {
           backgroundColor: ["#0d6efd", "#198754", "#dc3545", "#ffc107", "#6f42c1", "#20c997", "#fd7e14", "#6c757d"],
           borderColor: "#0d6efd",
           fill: false,
-          tension: 0.2,
+          tension: 0.5,
         },
       ],
     },
@@ -452,17 +453,22 @@ function addAlert(ip, type) {
 
 function initMap() {
   if (map) {
-    map.remove(); // destruye el mapa anterior
+    map.remove();
   }
+
   map = L.map("map").setView([20, 0], 2);
+
   L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
     attribution: "© OpenStreetMap",
   }).addTo(map);
+
   markerCluster = L.markerClusterGroup();
   map.addLayer(markerCluster);
+
+  // 🔥 CLAVE
   setTimeout(() => {
     map.invalidateSize();
-  }, 500);
+  }, 0);
 }
 
 async function geolocateIP(ip) {
@@ -591,7 +597,7 @@ function populateFilters(logs) {
   defaultOption.value = "";
   defaultOption.textContent = "Todos los estados";
   select.appendChild(defaultOption);
-  
+
   const defaultOptionMethod = document.createElement("option");
   defaultOptionMethod.value = "";
   defaultOptionMethod.textContent = "Todos los metodos";
