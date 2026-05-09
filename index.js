@@ -12,6 +12,22 @@ const searchBox = document.getElementById("searchBox");
 const statusFilter = document.getElementById("statusFilter");
 const methodFilter = document.getElementById("methodFilter");
 
+const btnFullscreenMap = document.getElementById("btnFullscreenMap");
+const mapContainer = document.getElementById("map");
+
+btnFullscreenMap.addEventListener("click", () => {
+  if (!document.fullscreenElement) {
+    mapContainer.requestFullscreen().then(() => {
+      // Leaflet necesita recalcular tamaño
+      setTimeout(() => {
+        map.invalidateSize();
+      }, 300);
+    });
+  } else {
+    document.exitFullscreen();
+  }
+});
+
 searchBox.addEventListener("input", applyFilters);
 statusFilter.addEventListener("change", applyFilters);
 methodFilter.addEventListener("change", applyFilters);
@@ -248,7 +264,7 @@ function buildIpRanking() {
 
     if (isPrivateIP(ip)) return;
 
-    if (!stats[ip]) stats[ip] = {req: 0, e400: 0, e401: 0,e403: 0,e404: 0, uris: new Set()};
+    if (!stats[ip]) stats[ip] = {req: 0, e400: 0, e401: 0, e403: 0, e404: 0, uris: new Set()};
 
     stats[ip].req++;
 
@@ -355,8 +371,6 @@ function renderCharts() {
 
   // Ordenar las horas
   hours = Object.fromEntries(Object.entries(hours).sort((a, b) => a[0].localeCompare(b[0])));
-  console.log(hours);
-
   drawChart("statusChart", "pie", status);
   drawChart("methodChart", "bar", method);
   drawChart("timelineChart", "line", hours);
@@ -482,7 +496,7 @@ async function geolocateIP(ip) {
       return data;
     }
   } catch (e) {
-    console.log("Geo lookup error:", ip);
+    console.log("Error en geolocalización IP:", ip);
   }
 
   return null;

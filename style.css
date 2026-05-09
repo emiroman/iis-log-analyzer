@@ -79,8 +79,21 @@ thead th {
     color: green !important;
 }
 
-#map {
+/* #map {
     height: 420px;
+} */
+ #map {
+    height: 500px;
+    width: 100%;
+}
+/* Cuando el mapa entra en fullscreen */
+#map:fullscreen {
+    height: 100vh;
+    width: 100vw;
+}
+#map:-webkit-full-screen {
+    height: 100vh;
+    width: 100vw;
 }
 
 #loadingOverlay {
