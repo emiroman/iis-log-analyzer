@@ -264,7 +264,7 @@ function buildIpRanking() {
 
     if (isPrivateIP(ip)) return;
 
-    if (!stats[ip]) stats[ip] = {req: 0, e400: 0, e401: 0, e403: 0, e404: 0, uris: new Set()};
+    if (!stats[ip]) stats[ip] = {req: 0, e400: 0, e401: 0, e403: 0, e404: 0, score: 0, uris: new Set()};
 
     stats[ip].req++;
 
@@ -279,7 +279,6 @@ function buildIpRanking() {
   //let ordenado = Object.entries(stats).sort((a, b) => b[1].req - a[1].req);
 
   let statsOrdenado = Object.fromEntries(Object.entries(stats).sort((a, b) => b[1].req - a[1].req));
-
   let tbody = document.getElementById("ipRanking");
   tbody.innerHTML = "";
 
@@ -304,6 +303,7 @@ function buildIpRanking() {
       risk = "Medium";
       riskClass = "risk-medium";
     }
+    s.score = score;
 
     let tr = document.createElement("tr");
     tr.classList.add("text-center");
@@ -329,6 +329,7 @@ function buildIpRanking() {
       filterIP(e.target.dataset.ip);
     }
   });
+  console.log(statsOrdenado);
 }
 
 function renderSummary() {
@@ -639,3 +640,40 @@ function populateFilters(logs) {
     selectMethod.appendChild(option);
   });
 }
+
+document.addEventListener("DOMContentLoaded", () => {
+  let sortDirection = {};
+
+  document.querySelectorAll(".sortable").forEach((header) => {
+    header.style.cursor = "pointer";
+
+    header.addEventListener("click", () => {
+      const table = document.getElementById("tableRanking");
+      const tbody = table.querySelector("tbody");
+      const rows = Array.from(tbody.querySelectorAll("tr"));
+
+      const column = parseInt(header.dataset.column);
+
+      sortDirection[column] = !sortDirection[column];
+
+      rows.sort((a, b) => {
+        let aValue = a.cells[column].innerText.trim();
+        let bValue = b.cells[column].innerText.trim();
+
+        // Si son números, comparar como números
+        const aNum = parseFloat(aValue);
+        const bNum = parseFloat(bValue);
+
+        if (!isNaN(aNum) && !isNaN(bNum)) {
+          return sortDirection[column] ? aNum - bNum : bNum - aNum;
+        }
+
+        // Si son textos
+        return sortDirection[column] ? aValue.localeCompare(bValue) : bValue.localeCompare(aValue);
+      });
+
+      tbody.innerHTML = "";
+      rows.forEach((row) => tbody.appendChild(row));
+    });
+  });
+});
