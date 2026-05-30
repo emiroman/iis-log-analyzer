@@ -329,7 +329,6 @@ function buildIpRanking() {
       filterIP(e.target.dataset.ip);
     }
   });
-  console.log(statsOrdenado);
 }
 
 function renderSummary() {
@@ -470,8 +469,8 @@ function initMap() {
   if (map) {
     map.remove();
   }
-
-  map = L.map("map").setView([20, 0], 2);
+const argentinaCentro = [-38.4161, -63.6167];
+  map = L.map("map").setView(argentinaCentro, 4);
 
   L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
     attribution: "© OpenStreetMap",
@@ -538,9 +537,12 @@ async function buildMap() {
     counts[r.cip] = (counts[r.cip] || 0) + 1;
   });
 
+  const uniqueValues = new Set(Object.values(counts));
+  const cantidadIpUnicas = uniqueValues.size;
+
   let ips = Object.entries(counts)
     .sort((a, b) => b[1] - a[1])
-    .slice(0, 10)
+    .slice(0, cantidadIpUnicas > 50 ? 50 : cantidadIpUnicas)
     .map((x) => x[0]);
 
   for (let ip of ips) {
