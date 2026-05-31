@@ -79,6 +79,7 @@ Optimizaciones implementadas:
 * JavaScript
 * Bootstrap
 * Chart.js
+* GeoJS (Geolocation lookup API)
 
 ## Seguridad
 
