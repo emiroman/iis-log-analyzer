@@ -6,7 +6,7 @@ let fields = [];
 let map;
 let markerCluster;
 let heatPoints = [];
-let geoCache = {};
+//let geoCache = {};
 
 const searchBox = document.getElementById("searchBox");
 const statusFilter = document.getElementById("statusFilter");
@@ -47,6 +47,7 @@ document.getElementById("fileInput").addEventListener("change", function (e) {
     document.getElementById("dashboard").style.display = "block";
     hideLoading();
     populateFilters(filteredRows);
+    console.log("*** Carga finalizada ***");
   };
   reader.readAsText(file);
 });
@@ -469,7 +470,7 @@ function initMap() {
   if (map) {
     map.remove();
   }
-const argentinaCentro = [-38.4161, -63.6167];
+  const argentinaCentro = [-38.4161, -63.6167];
   map = L.map("map").setView(argentinaCentro, 4);
 
   L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
@@ -485,18 +486,24 @@ const argentinaCentro = [-38.4161, -63.6167];
   }, 0);
 }
 
-async function geolocateIP(ip) {
-  if (geoCache[ip]) return geoCache[ip];
-
+async function geolocateIPBatch(ip) {
   try {
-    let r = await fetch(`https://get.geojs.io/v1/ip/geo/${ip}.json`);
+    let r = await fetch(`https://get.geojs.io/v1/ip/geo.json?ip=${ip}`); //--> Ejemplo para hacer una llamada con muchas IPs.
     let data = await r.json();
     if (data) {
-      geoCache[ip] = data;
-      return data;
+      const resultado = data.map((item) => ({
+        ip: item.ip,
+        latitude: item.latitude,
+        longitude: item.longitude,
+        city: item.city ?? "",
+        country: item.country,
+        ISP: item.organization_name,
+      }));
+
+      return resultado;
     }
   } catch (e) {
-    console.log("Error en geolocalización IP:", ip);
+    console.log("Error en geolocalización batch. Detalle:", e);
   }
 
   return null;
@@ -530,7 +537,6 @@ function isPrivateIP(ip) {
 async function buildMap() {
   heatPoints = [];
   initMap();
-  //let ips = [...new Set(rows.map(r => r.cip))]
   let counts = {};
 
   rows.forEach((r) => {
@@ -542,19 +548,20 @@ async function buildMap() {
 
   let ips = Object.entries(counts)
     .sort((a, b) => b[1] - a[1])
-    .slice(0, cantidadIpUnicas > 50 ? 50 : cantidadIpUnicas)
+    .slice(0, cantidadIpUnicas > 100 ? 100 : cantidadIpUnicas)
     .map((x) => x[0]);
+  const listadoIps = ips.join(",");
+  const resultadoGeolocation = await geolocateIPBatch(listadoIps);
 
-  for (let ip of ips) {
-    if (isPrivateIP(ip)) continue;
-    let geo = await geolocateIP(ip);
-    if (!geo) continue;
-    if (geo.latitude == "nil" && geo.longitude == "nil") continue;
-    let lat = parseFloat(geo.latitude);
-    let lon = parseFloat(geo.longitude);
+  for (let ip of resultadoGeolocation) {
+    if (isPrivateIP(ip.ip)) continue;
+    if (ip.latitude == "nil" && ip.longitude == "nil") continue;
+    let lat = parseFloat(ip.latitude);
+    let lon = parseFloat(ip.longitude);
     let marker = L.marker([lat, lon]).bindPopup(`
-<b>${ip}</b><br>
-${geo.city}, ${geo.country}
+<b>${ip.ip}</b><br>
+<span><b>ISP:</b> ${ip.ISP}</span><br>
+${ip.city == "" ? "" : ip.city + ","} ${ip.country}
 `);
     markerCluster.addLayer(marker);
     heatPoints.push([lat, lon, 0.5]);
