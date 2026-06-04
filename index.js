@@ -104,6 +104,7 @@ function parseLog(text) {
 
     rows.push({
       date: formatter.format(utc), // reutiliza formatter
+      timestamp: utc.getTime(),
       cip: obj["c-ip"],
       method: obj["cs-method"],
       uri,
@@ -115,6 +116,7 @@ function parseLog(text) {
     });
   }
 
+  rows.sort((a, b) => b.timestamp - a.timestamp); //Ordenamiento
   filteredRows = [...rows];
 
   renderAll();
