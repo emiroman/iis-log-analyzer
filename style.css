@@ -10,6 +10,30 @@
     overflow-y: auto;
 }
 
+/* Tabla de logs: las filas crecen en alto para que se vean todos los campos sin scroll horizontal
+   (el scroll solo aparecería como último recurso en ventanas extremadamente angostas) */
+#logTable {
+    width: 100%;
+    min-width: 1150px; /* por debajo de este ancho aparece scroll horizontal como último recurso */
+    table-layout: fixed; /* anchos predecibles: la URI tiene un % y el User-Agent se lleva el resto */
+    font-size: 0.85rem;
+}
+
+#logTable td {
+    vertical-align: top;
+    overflow-wrap: anywhere; /* parte URIs / User-Agents largos aunque no tengan espacios */
+}
+
+/* Columnas "cortas" con ancho fijo; la URI (5) tiene un porcentaje y el UserAgent (9) se lleva el resto */
+#logTable th:nth-child(1) { width: 95px; }  /* Fecha */
+#logTable th:nth-child(2) { width: 115px; } /* IP Origen */
+#logTable th:nth-child(3) { width: 180px; } /* Host destino */
+#logTable th:nth-child(4) { width: 62px; }  /* Método */
+#logTable th:nth-child(5) { width: 18%; }   /* URI */
+#logTable th:nth-child(6) { width: 60px; }  /* Status */
+#logTable th:nth-child(7) { width: 82px; }  /* Protocolo */
+#logTable th:nth-child(8) { width: 100px; } /* Tipo */
+
 thead th {
     position: sticky;
     top: 0;

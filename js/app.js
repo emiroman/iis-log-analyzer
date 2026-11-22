@@ -257,15 +257,15 @@ function renderTable() {
     const fullUri = r.uri + (r.query ? "?" + r.query : "");
 
     parts.push(`<tr class="${rowClass}">
-<td style="min-width:160px;">${esc(formatDate(r.ts))}</td>
-<td><a href="#" class="ip-link" data-ip="${esc(r.cip)}">${esc(r.cip)}</a></td>
-<td>${esc(r.host)}</td>
+<td>${esc(formatDate(r.ts))}</td>
+<td><a href="#" class="ip-link" data-ip="${esc(r.cip)}">${esc(r.cip).replace(/:/g, ":<wbr>")}</a></td>
+<td>${esc(r.host).replace(/\./g, ".<wbr>")}</td>
 <td><span class="badge ${methodClass}">${esc(r.method)}</span></td>
-<td>${esc(fullUri)}</td>
+<td title="${esc(fullUri)}">${esc(fullUri)}</td>
 <td><span class="badge ${statusColor}">${esc(r.status)}</span></td>
 <td>${esc(r.version)}</td>
 <td>${esc(r.type)}</td>
-<td class="text-truncate" style="max-width:500px" title="${esc(r.ua)}">${esc(r.ua)}</td>
+<td title="${esc(r.ua)}">${esc(r.ua)}</td>
 </tr>`);
   }
 
