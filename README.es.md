@@ -1,4 +1,4 @@
-# IIS Log Analyzer (Client-Side)
+# Analizador de Logs IIS (Client-Side)
 
 🇪🇸 Español | 🇬🇧 [English](README.md)
 
