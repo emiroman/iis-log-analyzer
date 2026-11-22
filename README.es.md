@@ -47,8 +47,8 @@ Ejemplo:
 ## Uso
 
 1. Abrir la página en el navegador
-2. Seleccionar un archivo de log de IIS
-3. El sistema procesará el archivo automáticamente
+2. Seleccionar uno o más archivos de log de IIS (`.log` o `.txt`); varios archivos se fusionan por fecha
+3. El sistema procesará el/los archivo(s) automáticamente
 4. Se mostrarán:
 
 * métricas
@@ -59,17 +59,32 @@ Ejemplo:
 
 Es posible filtrar registros mediante:
 
-* campo de búsqueda
-* click sobre una IP en la tabla
+* campo de búsqueda (con debounce)
+* selectores de método HTTP y código de estado (combinables con la búsqueda)
+* click sobre una IP en la tabla o en el ranking
+
+El resumen y los gráficos siguen los filtros activos. El ranking de IPs, las alertas y el mapa usan siempre el log completo.
+
+## Detección de ataques
+
+La detección analiza la URI **y la query string** (`cs-uri-query`), tanto en texto crudo como decodificado:
+
+* SQL injection, XSS, path traversal e intentos de exploit (ej. `${jndi:`, `/etc/passwd`)
+* User-Agents de herramientas de seguridad (sqlmap, nikto, nmap, ...)
+* Descubrimiento de archivos sensibles, paneles admin, WordPress y bases de datos
+* Bots y scripts (curl, wget, python, ...)
+* Fuerza bruta: más de 20 respuestas `401` desde la misma IP
+
+La detección es heurística y puede generar falsos positivos o negativos.
 
 ## Rendimiento
 
-El parser está optimizado para manejar archivos grandes (mejoras pendiente).
-
 Optimizaciones implementadas:
 
+* parseo en bloques que ceden el hilo a la UI, con indicador de progreso
+* cadenas de búsqueda precalculadas y búsqueda con debounce
 * reutilización de `Intl.DateTimeFormat`
-* renderización optimizada de tablas
+* tabla renderizada en una sola pasada (hasta 20.000 filas)
 * destrucción de instancias de gráficos
 
 ## Tecnologías utilizadas
@@ -86,7 +101,9 @@ Optimizaciones implementadas:
 Los archivos de log **no se envían a ningún servidor**.
 Todo el análisis se realiza localmente en el navegador del usuario.
 
-Esto permite analizar logs sensibles sin riesgo de exposición.
+La única excepción es el **mapa de origen**: las IPs públicas de los 100 clientes más activos (las privadas nunca se envían) se consultan contra la API de terceros [GeoJS](https://www.geojs.io/) para obtener su ubicación. El contenido del log (URIs, User-Agents, etc.) nunca se envía. Si no querés compartir esas IPs, no uses el mapa (por ejemplo, bloqueando la request).
+
+Todo dato proveniente del log se escapa como HTML antes de mostrarse, por lo que peticiones maliciosas presentes en un log no pueden ejecutar código en el visor.
 
 ## Limitaciones
 
@@ -101,7 +118,7 @@ Debido a limitaciones del navegador:
 * análisis por país
 * detección de patrones de ataque más avanzados
 * filtros más complejos
-* análisis de múltiples archivos
+* mover el parseo a un Web Worker
 
 ## Screenshots
 

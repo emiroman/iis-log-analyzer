@@ -47,8 +47,8 @@ Example:
 ## Usage
 
 1. Open the page in your browser
-2. Select an IIS log file
-3. The system will automatically process the file
+2. Select one or more IIS log files (`.log` or `.txt`); multiple files are merged by date
+3. The system will automatically process the file(s)
 4. The following will be displayed:
 
 * metrics
@@ -59,17 +59,32 @@ Example:
 
 Log records can be filtered using:
 
-* search field
-* clicking an IP address in the table
+* search field (debounced)
+* HTTP method and status code selectors (combinable with the search)
+* clicking an IP address in the table or in the ranking
+
+The summary and charts follow the active filters. The IP ranking, alerts and map always use the full log.
+
+## Attack Detection
+
+Detection runs over the URI **and the query string** (`cs-uri-query`) using the raw and URL-decoded text:
+
+* SQL injection, XSS, path traversal and exploit attempts (e.g. `${jndi:`, `/etc/passwd`)
+* Security tool user agents (sqlmap, nikto, nmap, ...)
+* Sensitive file / admin / WordPress / database panel discovery
+* Bots and scripts (curl, wget, python, ...)
+* Brute force: more than 20 `401` responses from the same IP
+
+Detection is heuristic and may produce false positives or negatives.
 
 ## Performance
 
-The parser is optimized to handle large files (further improvements planned).
-
 Implemented optimizations:
 
+* parsing in chunks that yield to the UI, with progress indicator
+* precomputed search strings and debounced search
 * reuse of `Intl.DateTimeFormat`
-* optimized table rendering
+* table rendered in a single pass (up to 20,000 rows)
 * destruction of chart instances
 
 ## Technologies Used
@@ -86,7 +101,9 @@ Implemented optimizations:
 Log files **are not sent to any server**.
 All analysis is performed locally in the user's browser.
 
-This allows analyzing sensitive logs without risk of exposure.
+The only exception is the **origin map**: the public IP addresses of the 100 most active clients (private IPs are never sent) are queried against the third-party [GeoJS](https://www.geojs.io/) API to obtain their location. Log contents (URIs, user agents, etc.) are never sent. If you do not want to share those IPs, do not rely on the map (e.g. block the request).
+
+All log-derived data is HTML-escaped before rendering, so malicious requests present in a log cannot execute code in the viewer.
 
 ## Limitations
 
@@ -101,7 +118,7 @@ Due to browser limitations:
 * country-based traffic analysis
 * more advanced attack pattern detection
 * more complex filters
-* multiple file analysis
+* move parsing to a Web Worker
 
 ## Codebase map
 ![Codebase](codebase-map.png)

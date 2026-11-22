@@ -1,67 +1,149 @@
-let rows = [];
-let filteredRows = [];
+"use strict";
+
+/* ===================== Estado ===================== */
+let rows = []; // todos los registros parseados
+let filteredRows = []; // registros tras aplicar filtros
 let charts = {};
-let fields = [];
+let rankingData = []; // [{ip, req, e400, e401, e403, e404, uris, score}]
+let rankingSort = {key: "score", asc: false};
 
 let map;
 let markerCluster;
-let heatPoints = [];
-//let geoCache = {};
+let mapToken = 0; // evita condiciones de carrera al cargar un archivo nuevo
 
-const searchBox = document.getElementById("searchBox");
-const statusFilter = document.getElementById("statusFilter");
-const methodFilter = document.getElementById("methodFilter");
+const MAX_ROWS = 20000; // máximo de filas dibujadas en la tabla
+const MAX_ALERTS = 1000; // máximo de alertas dibujadas
+const MAP_MAX_IPS = 100; // IPs más activas a geolocalizar
+const GEO_BATCH_SIZE = 50; // IPs por request (evita URLs demasiado largas)
+const BRUTEFORCE_THRESHOLD = 20; // cantidad de 401 por IP
 
-const btnFullscreenMap = document.getElementById("btnFullscreenMap");
-const mapContainer = document.getElementById("map");
+const ATTACK_TYPES = new Set(["SQL INJECTION", "PATH TRAVERSAL", "XSS ATTACK", "EXPLOIT ATTEMPT"]);
+const SCANNER_TYPES = new Set(["SECURITY TOOL", "CONFIG SCAN", "WORDPRESS SCAN", "ADMIN SCAN", "DB SCAN"]);
 
-btnFullscreenMap.addEventListener("click", () => {
+const $ = (id) => document.getElementById(id);
+
+/* ===================== Utilidades ===================== */
+function esc(value) {
+  return String(value ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
+function debounce(fn, ms) {
+  let t;
+  return (...args) => {
+    clearTimeout(t);
+    t = setTimeout(() => fn(...args), ms);
+  };
+}
+
+function safeDecode(s) {
+  try {
+    return decodeURIComponent(s.replace(/\+/g, " "));
+  } catch {
+    return s.replace(/\+/g, " ");
+  }
+}
+
+function isPrivateIP(ip) {
+  if (!ip) return true;
+  ip = ip.toLowerCase();
+  if (ip.includes(":")) {
+    return ip === "::1" || ip.startsWith("fc") || ip.startsWith("fd") || ip.startsWith("fe80");
+  }
+  const m = ip.match(/^(\d{1,3})\.(\d{1,3})\./);
+  if (!m) return true; // no es una IP válida: no se analiza
+  const a = +m[1];
+  const b = +m[2];
+  return a === 10 || a === 127 || a === 0 || (a === 172 && b >= 16 && b <= 31) || (a === 192 && b === 168) || (a === 169 && b === 254);
+}
+
+function showLoading(text = "Procesando...") {
+  $("loadingText").innerText = text;
+  $("loadingOverlay").style.display = "flex";
+}
+
+function hideLoading() {
+  $("loadingOverlay").style.display = "none";
+}
+
+const nextTick = () => new Promise((r) => setTimeout(r, 0));
+
+/* ===================== Eventos (se registran una sola vez) ===================== */
+const searchBox = $("searchBox");
+const statusFilter = $("statusFilter");
+const methodFilter = $("methodFilter");
+
+searchBox.addEventListener("input", debounce(applyFilters, 250));
+statusFilter.addEventListener("change", applyFilters);
+methodFilter.addEventListener("change", applyFilters);
+
+// Delegación: un único listener para los links de IP de ambas tablas
+document.addEventListener("click", (e) => {
+  const link = e.target.closest && e.target.closest(".ip-link");
+  if (!link) return;
+  e.preventDefault();
+  filterIP(link.dataset.ip);
+});
+
+$("btnFullscreenMap").addEventListener("click", () => {
+  const mapContainer = $("map");
   if (!document.fullscreenElement) {
     mapContainer.requestFullscreen().then(() => {
-      // Leaflet necesita recalcular tamaño
-      setTimeout(() => {
-        map.invalidateSize();
-      }, 300);
+      setTimeout(() => map && map.invalidateSize(), 300);
     });
   } else {
     document.exitFullscreen();
   }
 });
+document.addEventListener("fullscreenchange", () => setTimeout(() => map && map.invalidateSize(), 300));
 
-searchBox.addEventListener("input", applyFilters);
-statusFilter.addEventListener("change", applyFilters);
-methodFilter.addEventListener("change", applyFilters);
+$("fileInput").addEventListener("change", async (e) => {
+  const files = Array.from(e.target.files || []);
+  if (files.length === 0) return;
 
-document.getElementById("fileInput").addEventListener("change", function (e) {
-  console.log("*** Iniciando carga ***");
-  const file = e.target.files[0];
-  if (!file) {
-    console.log("No hay archivo seleccionado.");
-    return;
-  }
-  showLoading("Analizando archivo de log...");
-  const reader = new FileReader();
-  reader.onload = async function (evt) {
-    await new Promise((r) => setTimeout(r, 10));
-    parseLog(evt.target.result);
-    document.getElementById("dashboard").style.display = "block";
+  showLoading("Leyendo archivo(s)...");
+  try {
+    const parsed = [];
+    for (let i = 0; i < files.length; i++) {
+      showLoading(`Leyendo ${files[i].name} (${i + 1}/${files.length})...`);
+      const text = await files[i].text();
+      await parseLog(text, parsed, files[i].name);
+    }
+    if (files.length > 1) parsed.sort((a, b) => a.ts - b.ts);
+    rows = parsed;
+
+    showLoading("Generando análisis...");
+    await nextTick();
+
+    resetFilters();
+    populateFilters(rows);
+    filteredRows = rows;
+    $("dashboard").style.display = "block";
+
+    renderAll();
+    detectAttacks();
+    detectBruteforce();
+    buildIpRanking();
+    buildMap(); // asíncrono, no bloquea la UI
+  } catch (err) {
+    console.error("Error procesando el log:", err);
+    alert("No se pudo procesar el archivo: " + err.message);
+  } finally {
     hideLoading();
-    populateFilters(filteredRows);
-    console.log("*** Carga finalizada ***");
-  };
-  reader.readAsText(file);
+    e.target.value = ""; // permite volver a cargar el mismo archivo
+  }
 });
 
-const searchInput = document.getElementById("searchBox");
-searchInput.addEventListener("input", filterLogs);
-
-function parseLog(text) {
-  rows = [];
-  fields = [];
-
+/* ===================== Parseo ===================== */
+async function parseLog(text, out, fileName) {
+  let fields = [];
   const lines = text.split("\n");
 
-  // Crear formatter UNA sola vez (gran mejora)
+  // Formatter creado una sola vez
   const formatter = new Intl.DateTimeFormat("es-AR", {
     day: "2-digit",
     month: "2-digit",
@@ -72,123 +154,172 @@ function parseLog(text) {
     hour12: false,
   });
 
-  for (let line of lines) {
-    line = line.trim();
-
-    if (line.startsWith("#Fields:")) {
-      fields = line.replace("#Fields:", "").trim().split(" ");
-      continue;
+  const CHUNK = 20000;
+  for (let n = 0; n < lines.length; n++) {
+    // Ceder el hilo periódicamente para no congelar la UI
+    if (n % CHUNK === 0 && n > 0) {
+      showLoading(`Analizando ${fileName}... ${Math.round((n / lines.length) * 100)}%`);
+      await nextTick();
     }
 
-    if (line.startsWith("#") || line === "") continue;
+    const line = lines[n].trim();
+    if (line === "") continue;
+
+    if (line.startsWith("#Fields:")) {
+      fields = line.slice(8).trim().split(/\s+/);
+      continue;
+    }
+    if (line.startsWith("#")) continue;
+    if (fields.length === 0) continue;
 
     const parts = line.split(" ");
     const obj = {};
+    for (let i = 0; i < fields.length; i++) obj[fields[i]] = parts[i] || "";
 
-    fields.forEach((f, i) => {
-      obj[f] = parts[i] || "";
-    });
+    const clean = (v) => (v && v !== "-" ? v : "");
 
     let ua = obj["cs(User-Agent)"] || "";
-
-    // Decodificar solo si es necesario
-    if (ua.includes("%")) {
-      ua = decodeURIComponent(ua.replace(/\+/g, " "));
-    }
+    if (ua.includes("%") || ua.includes("+")) ua = safeDecode(ua);
 
     const uri = obj["cs-uri-stem"] || "";
-    const type = detectType(ua, uri);
+    const query = clean(obj["cs-uri-query"]);
+    const type = detectType(ua, uri, query);
 
-    // Crear fecha UTC
+    // Fecha en UTC (IIS registra en UTC por defecto)
     const utc = new Date(obj["date"] + "T" + obj["time"] + "Z");
+    const validDate = !isNaN(utc.getTime());
 
-    rows.push({
-      date: formatter.format(utc), // reutiliza formatter
-      timestamp: utc.getTime(),
-      cip: obj["c-ip"],
-      method: obj["cs-method"],
+    const row = {
+      ts: validDate ? utc.getTime() : 0,
+      date: validDate ? formatter.format(utc) : `${obj["date"] || ""} ${obj["time"] || ""}`.trim(),
+      hour: validDate ? utc.getHours() : -1,
+      cip: obj["c-ip"] || "",
+      method: obj["cs-method"] || "",
       uri,
-      status: obj["sc-status"],
-      version: obj["cs-version"],
+      query,
+      status: obj["sc-status"] || "",
+      version: obj["cs-version"] || "",
       ua,
       type,
       host: obj["cs-host"] || "",
-    });
+    };
+    // Cadena de búsqueda precalculada (evita JSON.stringify en cada tecla)
+    row._s = [row.date, row.cip, row.host, row.method, row.uri, row.query, row.status, row.version, row.type, row.ua].join(" ").toLowerCase();
+    out.push(row);
   }
-
-  rows.sort((a, b) => b.timestamp - a.timestamp); //Ordenamiento
-  filteredRows = [...rows];
-
-  renderAll();
-  detectAttacks();
-  buildAttackStats();
-  detectBruteforce();
-  buildIpRanking();
-  buildMap();
 }
 
-function detectBruteforce() {
-  let attempts = {};
-  rows.forEach((r) => {
-    if (r.status === "401") {
-      attempts[r.cip] = (attempts[r.cip] || 0) + 1;
-    }
-  });
-  Object.entries(attempts).forEach(([ip, count]) => {
-    if (count > 20) {
-      addAlert(ip, "POSSIBLE BRUTEFORCE (" + count + " 401)");
-    }
-  });
-}
+/* ===================== Detección ===================== */
+const RE = {
+  traversal: /\.\.[\/\\]|%2e%2e|\.\.%2f|\.\.%5c/,
+  sqli: /(?:'|%27)\s*(?:or|and|--|;|\)|=)|union\s+(?:all\s+)?select|\bor\s+1\s*=\s*1|sleep\s*\(|benchmark\s*\(|waitfor\s+delay|information_schema|;\s*drop\s+table|\bselect\b.+\bfrom\b/,
+  xss: /<script|%3cscript|javascript:|onerror\s*=|onload\s*=|<img[\s%]|%3cimg|<svg|%3csvg|alert\s*\(/,
+  exploit: /\$\{jndi:|%24%7bjndi|\/etc\/passwd|cmd\.exe|powershell|\/bin\/(?:ba)?sh/,
+  config: /\.env(?:\b|$)|\/\.git(?:\/|$)|web\.config|appsettings(?:\.[\w-]+)?\.json|wp-config|\.htaccess|\.htpasswd|\.ds_store/,
+  wordpress: /wp-admin|wp-login|wp-content|wp-includes|xmlrpc\.php/,
+  admin: /\/admin(?:istrator)?(?:\/|$|\.)/,
+  db: /phpmyadmin|dbadmin|\/pma(?:\/|$)|\/mysql(?:\/|$)|adminer/,
+};
 
-function buildAttackStats() {
-  let stats = {};
-
-  rows.forEach((r) => {
-    if (!r.type) return;
-    stats[r.type] = (stats[r.type] || 0) + 1;
-  });
-
-  drawChart("attackChart", "bar", stats);
-}
-
-function detectType(ua, uri) {
+function detectType(ua, uri, query) {
+  const rawTarget = (uri + (query ? "?" + query : "")).toLowerCase();
+  // Se revisa tanto el texto crudo como su versión decodificada
+  const target = rawTarget + " " + safeDecode(rawTarget);
   ua = (ua || "").toLowerCase();
-  uri = (uri || "").toLowerCase();
 
-  // BOT
-  if (ua.includes("bot") || ua.includes("crawler") || ua.includes("spider")) return "BOT";
+  // 1) Ataques sobre la URL (incluye query string)
+  if (RE.traversal.test(target)) return "PATH TRAVERSAL";
+  if (RE.exploit.test(target)) return "EXPLOIT ATTEMPT";
+  if (RE.sqli.test(target)) return "SQL INJECTION";
+  if (RE.xss.test(target)) return "XSS ATTACK";
 
-  // SECURITY SCANNERS
-  if (ua.includes("sqlmap") || ua.includes("nikto") || ua.includes("nmap") || ua.includes("acunetix") || ua.includes("nessus")) return "SECURITY TOOL";
+  // 2) Herramientas de seguridad por User-Agent
+  if (/sqlmap|nikto|nmap|acunetix|nessus|masscan|zgrab|dirbuster|gobuster|wpscan|nuclei/.test(ua)) return "SECURITY TOOL";
 
-  // PATH TRAVERSAL
-  if (uri.includes("../") || uri.includes("..\\") || uri.includes("%2e%2e")) return "PATH TRAVERSAL";
+  // 3) Descubrimiento de archivos / paneles
+  if (RE.config.test(target)) return "CONFIG SCAN";
+  if (RE.wordpress.test(target)) return "WORDPRESS SCAN";
+  if (RE.db.test(target)) return "DB SCAN";
+  if (RE.admin.test(target)) return "ADMIN SCAN";
 
-  // SQL INJECTION
-  if (uri.includes("'") || uri.includes("%27") || uri.includes(" or ") || uri.includes("union select") || uri.includes("sleep(") || uri.includes("benchmark(")) return "SQL INJECTION";
-
-  // XSS
-  if (uri.includes("<script") || uri.includes("%3cscript") || uri.includes("javascript:")) return "XSS ATTACK";
-
-  // FILE DISCOVERY / CONFIG
-  if (uri.includes(".env") || uri.includes(".git") || uri.includes("config") || uri.includes("web.config") || uri.includes("appsettings")) return "CONFIG SCAN";
-
-  // CMS SCANNERS
-  if (uri.includes("wp-admin") || uri.includes("wp-login") || uri.includes("xmlrpc.php")) return "WORDPRESS SCAN";
-
-  // ADMIN DISCOVERY
-  if (uri.includes("/admin") || uri.includes("/administrator") || uri.includes("/dashboard")) return "ADMIN SCAN";
-
-  // SENSITIVE FILES
-  if (uri.includes("phpmyadmin") || uri.includes("mysql") || uri.includes("dbadmin")) return "DB SCAN";
-
-  // SCRIPT / AUTOMATION
-  if (ua.includes("curl") || ua.includes("wget") || ua.includes("python")) return "SCRIPT";
+  // 4) Bots y automatización
+  if (/bot|crawler|spider/.test(ua)) return "BOT";
+  if (/curl|wget|python|go-http-client|libwww/.test(ua)) return "SCRIPT";
 
   return "";
 }
 
+function detectAttacks() {
+  const ul = $("alerts");
+  ul.innerHTML = "";
+  const seen = new Set();
+  let html = "";
+  let count = 0;
+
+  for (const r of rows) {
+    if (!r.type || isPrivateIP(r.cip)) continue;
+    const key = r.cip + "-" + r.type;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    if (count++ < MAX_ALERTS) html += alertHtml(r.cip, r.type);
+  }
+  if (count > MAX_ALERTS) html += `<li class="list-group-item">... y ${count - MAX_ALERTS} alertas más</li>`;
+  ul.innerHTML = html;
+}
+
+function detectBruteforce() {
+  const attempts = {};
+  for (const r of rows) {
+    if (r.status === "401" && !isPrivateIP(r.cip)) attempts[r.cip] = (attempts[r.cip] || 0) + 1;
+  }
+  let html = "";
+  for (const [ip, count] of Object.entries(attempts)) {
+    if (count > BRUTEFORCE_THRESHOLD) html += alertHtml(ip, `POSSIBLE BRUTEFORCE (${count} 401)`, true);
+  }
+  $("alerts").insertAdjacentHTML("afterbegin", html);
+}
+
+function alertHtml(ip, type, danger = false) {
+  const color = danger || ATTACK_TYPES.has(type) ? "list-group-item-danger" : "list-group-item-warning";
+  return `<li class="list-group-item ${color}"><strong>${esc(ip)}</strong> - ${esc(type)}</li>`;
+}
+
+/* ===================== Filtros ===================== */
+function resetFilters() {
+  searchBox.value = "";
+  statusFilter.value = "";
+  methodFilter.value = "";
+}
+
+function filterIP(ip) {
+  searchBox.value = ip;
+  applyFilters();
+  $("logTable").scrollIntoView({behavior: "smooth", block: "start"});
+}
+
+function applyFilters() {
+  const term = searchBox.value.trim().toLowerCase();
+  const st = statusFilter.value;
+  const me = methodFilter.value;
+
+  filteredRows = rows.filter((r) => (!st || r.status === st) && (!me || r.method === me) && (!term || r._s.includes(term)));
+
+  renderTable(filteredRows);
+  renderSummary();
+  renderCharts();
+}
+
+function populateFilters(logs) {
+  const fill = (select, label, values) => {
+    select.innerHTML = "";
+    select.add(new Option(label, ""));
+    values.forEach((v) => select.add(new Option(v, v)));
+  };
+  fill(statusFilter, "Todos los estados", Array.from(new Set(logs.map((l) => l.status))).sort());
+  fill(methodFilter, "Todos los metodos", Array.from(new Set(logs.map((l) => l.method))).sort());
+}
+
+/* ===================== Render ===================== */
 function renderAll() {
   renderTable(filteredRows);
   renderSummary();
@@ -197,151 +328,52 @@ function renderAll() {
 
 function renderTable(data) {
   const tbody = document.querySelector("#logTable tbody");
-  tbody.innerHTML = "";
+  const parts = [];
 
-  const fragment = document.createDocumentFragment();
-  const MAX_ROWS = 20000;
+  const limit = Math.min(data.length, MAX_ROWS);
+  for (let i = 0; i < limit; i++) {
+    const r = data[i];
 
-  data.slice(0, MAX_ROWS).forEach((r) => {
     let rowClass = "";
-
-    if (r.type === "ATTACK") rowClass = "attack";
-    if (r.type === "SCANNER") rowClass = "scanner";
-    if (r.type === "BOT") rowClass = "bot";
+    if (ATTACK_TYPES.has(r.type)) rowClass = "attack";
+    else if (SCANNER_TYPES.has(r.type)) rowClass = "scanner";
+    else if (r.type === "BOT") rowClass = "bot";
 
     let statusColor = "bg-secondary";
-
     if (r.status.startsWith("2")) statusColor = "bg-success";
-    if (r.status.startsWith("4")) statusColor = "bg-warning text-dark";
-    if (r.status.startsWith("5")) statusColor = "bg-danger";
+    else if (r.status.startsWith("4")) statusColor = "bg-warning text-dark";
+    else if (r.status.startsWith("5")) statusColor = "bg-danger";
 
-    let methodClass = "method-get";
+    const methodClass =
+      {POST: "method-post", PUT: "method-put", DELETE: "method-delete", HEAD: "method-head"}[r.method] || "method-get";
 
-    if (r.method === "POST") methodClass = "method-post";
-    if (r.method === "PUT") methodClass = "method-put";
-    if (r.method === "DELETE") methodClass = "method-delete";
-    if (r.method === "HEAD") methodClass = "method-head";
+    const fullUri = r.uri + (r.query ? "?" + r.query : "");
 
-    const tr = document.createElement("tr");
+    parts.push(`<tr class="${rowClass}">
+<td style="min-width:160px;">${esc(r.date)}</td>
+<td><a href="#" class="ip-link" data-ip="${esc(r.cip)}">${esc(r.cip)}</a></td>
+<td>${esc(r.host)}</td>
+<td><span class="badge ${methodClass}">${esc(r.method)}</span></td>
+<td>${esc(fullUri)}</td>
+<td><span class="badge ${statusColor}">${esc(r.status)}</span></td>
+<td>${esc(r.version)}</td>
+<td>${esc(r.type)}</td>
+<td class="text-truncate" style="max-width:500px" title="${esc(r.ua)}">${esc(r.ua)}</td>
+</tr>`);
+  }
 
-    tr.innerHTML = `
-<td style="min-width:160px;">${r.date}</td>
-<td><a href="#" class="ip-link" data-ip="${r.cip}">${r.cip}</a></td>
-<td>${r.host}</td>
-<td><span class="badge ${methodClass}">${r.method}</span></td>
-<td>${r.uri}</td>
-<td><span class="badge ${statusColor}">${r.status}</span></td>
-<td>${r.version || ""}</td>
-<td>${r.type}</td>
-<td class="text-truncate" style="max-width:500px">${r.ua}</td>
-`;
-
-    tr.className = rowClass;
-
-    fragment.appendChild(tr);
-  });
-
-  tbody.appendChild(fragment);
-
-  document.getElementById("totalRows").innerText = "Total registros: " + data.length + " (mostrando " + Math.min(data.length, MAX_ROWS) + ")";
-
-  document.querySelector("#logTable").addEventListener("click", function (e) {
-    if (e.target.classList.contains("ip-link")) {
-      e.preventDefault();
-      filterIP(e.target.dataset.ip);
-    }
-  });
-}
-
-function filterIP(ip) {
-  document.getElementById("searchBox").value = ip;
-  filterLogs();
-  //populateFilters(filteredRows);
-}
-
-function buildIpRanking() {
-  let stats = {};
-
-  rows.forEach((r) => {
-    let ip = r.cip;
-
-    if (isPrivateIP(ip)) return;
-
-    if (!stats[ip]) stats[ip] = {req: 0, e400: 0, e401: 0, e403: 0, e404: 0, score: 0, uris: new Set()};
-
-    stats[ip].req++;
-
-    if (r.status === "400") stats[ip].e400++;
-    if (r.status === "401") stats[ip].e401++;
-    if (r.status === "403") stats[ip].e403++;
-    if (r.status === "404") stats[ip].e404++;
-
-    stats[ip].uris.add(r.uri);
-  });
-
-  //let ordenado = Object.entries(stats).sort((a, b) => b[1].req - a[1].req);
-
-  let statsOrdenado = Object.fromEntries(Object.entries(stats).sort((a, b) => b[1].req - a[1].req));
-  let tbody = document.getElementById("ipRanking");
-  tbody.innerHTML = "";
-
-  Object.entries(statsOrdenado).forEach(([ip, s]) => {
-    let score = 0;
-
-    if (s.req > 50) score += 10;
-    score += s.e401 * 3;
-    score += s.e400;
-    score += s.e403 * 2;
-    score += s.e404 * 2;
-
-    if (s.uris.size > 20) score += 5;
-
-    let risk = "Low";
-    let riskClass = "risk-low";
-
-    if (score > 50) {
-      risk = "High";
-      riskClass = "risk-high";
-    } else if (score >= 20) {
-      risk = "Medium";
-      riskClass = "risk-medium";
-    }
-    s.score = score;
-
-    let tr = document.createElement("tr");
-    tr.classList.add("text-center");
-    tr.innerHTML = `
-<td><a href="#" class="ip-link" data-ip="${ip}">${ip}</a></td>
-<td>${s.req}</td>
-<td>${s.e400}</td>
-<td>${s.e401}</td>
-<td>${s.e403}</td>
-<td>${s.e404}</td>
-<td>${s.uris.size}</td>
-<td>${score}</td>
-<td class="${riskClass}">
-<span>${risk}</span>
-</td>
-`;
-    tbody.appendChild(tr);
-  });
-
-  document.querySelector("#tableRanking").addEventListener("click", function (e) {
-    if (e.target.classList.contains("ip-link")) {
-      e.preventDefault();
-      filterIP(e.target.dataset.ip);
-    }
-  });
+  tbody.innerHTML = parts.join("");
+  $("totalRows").innerText = "Total registros: " + data.length + " (mostrando " + limit + ")";
 }
 
 function renderSummary() {
-  let ips = new Set();
-  rows.forEach((r) => ips.add(r.cip));
-  document.getElementById("summary").innerHTML = `
+  const ips = new Set();
+  filteredRows.forEach((r) => ips.add(r.cip));
+  $("summary").innerHTML = `
 <div class="row text-center">
 <div class="col-md-6">
 <h6>Total Requests</h6>
-<span class="badge bg-primary fs-6">${rows.length}</span>
+<span class="badge bg-primary fs-6">${filteredRows.length}</span>
 </div>
 <div class="col-md-6">
 <h6>IPs Únicas</h6>
@@ -352,126 +384,137 @@ function renderSummary() {
 }
 
 function renderCharts() {
-  let status = {},
-    method = {},
-    hours = {};
+  const status = {};
+  const method = {};
+  const attacks = {};
+  const hours = {};
+  for (let i = 0; i < 24; i++) hours[i.toString().padStart(2, "0")] = 0;
 
-  rows.forEach((r) => {
-    // Conteo por status
+  for (const r of filteredRows) {
     status[r.status] = (status[r.status] || 0) + 1;
-    // Conteo por método
     method[r.method] = (method[r.method] || 0) + 1;
-    // Obtener la hora (00-23)
-    let h = r.date.substring(12, 14);
-    hours[h] = (hours[h] || 0) + 1;
-  });
-
-  // Asegurar que existan todas las horas
-  for (let i = 0; i < 24; i++) {
-    let h = i.toString().padStart(2, "0");
-    if (!hours[h]) hours[h] = 0;
+    if (r.type) attacks[r.type] = (attacks[r.type] || 0) + 1;
+    if (r.hour >= 0) hours[r.hour.toString().padStart(2, "0")]++;
   }
 
-  // Ordenar las horas
-  hours = Object.fromEntries(Object.entries(hours).sort((a, b) => a[0].localeCompare(b[0])));
   drawChart("statusChart", "pie", status);
   drawChart("methodChart", "bar", method);
   drawChart("timelineChart", "line", hours);
+  drawChart("attackChart", "bar", attacks);
 }
 
+const CHART_LABELS = {
+  statusChart: "Códigos de Estado",
+  methodChart: "Métodos HTTP",
+  timelineChart: "Peticiones por Hora",
+  attackChart: "Tipos de Ataques",
+};
+const PALETTE = ["#0d6efd", "#198754", "#dc3545", "#ffc107", "#6f42c1", "#20c997", "#fd7e14", "#6c757d"];
+
 function drawChart(id, type, data) {
-  if (charts[id]) {
-    charts[id].destroy();
-  }
-
-  let label = "";
-
-  if (id === "statusChart") label = "Códigos de Estado";
-  if (id === "methodChart") label = "Métodos HTTP";
-  if (id === "timelineChart") label = "Peticiones por Hora";
-  if (id === "attackChart") label = "Tipos de Ataques";
+  if (charts[id]) charts[id].destroy();
 
   const labels = Object.keys(data).sort();
   const values = labels.map((l) => data[l]);
 
-  charts[id] = new Chart(document.getElementById(id), {
-    type,
-    data: {
-      labels: labels,
-      datasets: [
-        {
-          label: label,
-          //labels: labels,
-          data: values,
-          backgroundColor: ["#0d6efd", "#198754", "#dc3545", "#ffc107", "#6f42c1", "#20c997", "#fd7e14", "#6c757d"],
-          borderColor: "#0d6efd",
-          fill: false,
-          tension: 0.5,
-        },
-      ],
-    },
-    options: {
-      responsive: true,
-      plugins: {
-        legend: {
-          display: true,
-        },
-      },
-      scales:
-        id === "timelineChart"
-          ? {
-              x: {
-                title: {
-                  display: true,
-                  text: "Horas del día (hs)",
-                },
-              },
-              y: {
-                title: {
-                  display: true,
-                  text: "Cantidad",
-                },
-                beginAtZero: true,
-              },
-            }
-          : {},
-    },
-  });
-}
-
-function filterLogs() {
-  let term = document.getElementById("searchBox").value.toLowerCase();
-  filteredRows = rows.filter((r) => JSON.stringify(r).toLowerCase().includes(term));
-  renderTable(filteredRows);
-}
-
-function detectAttacks() {
-  const ul = document.getElementById("alerts");
-  ul.innerHTML = "";
-  let seen = new Set();
-  rows.forEach((r) => {
-    if (!r.type) return;
-    let key = r.cip + "-" + r.type;
-    if (seen.has(key)) return;
-    seen.add(key);
-    addAlert(r.cip, r.type);
-  });
-}
-
-function addAlert(ip, type) {
-  const li = document.createElement("li");
-  let color = "list-group-item-warning";
-  if (type === "SQL INJECTION" || type === "PATH TRAVERSAL" || type === "XSS ATTACK") color = "list-group-item-danger";
-
-  li.className = "list-group-item " + color;
-  li.innerHTML = `<strong>${ip}</strong> - ${type}`;
-  document.getElementById("alerts").appendChild(li);
-}
-
-function initMap() {
-  if (map) {
-    map.remove();
+  const dataset = {label: CHART_LABELS[id] || "", data: values};
+  if (type === "line") {
+    dataset.borderColor = "#0d6efd";
+    dataset.backgroundColor = "rgba(13,110,253,0.15)";
+    dataset.fill = true;
+    dataset.tension = 0.4;
+  } else {
+    dataset.backgroundColor = labels.map((_, i) => PALETTE[i % PALETTE.length]);
   }
+
+  const options = {responsive: true, plugins: {legend: {display: true}}};
+  if (type === "line") {
+    options.scales = {
+      x: {title: {display: true, text: "Horas del día (hs)"}},
+      y: {title: {display: true, text: "Cantidad"}, beginAtZero: true},
+    };
+  } else if (type === "bar") {
+    options.scales = {y: {beginAtZero: true}};
+  }
+
+  charts[id] = new Chart($(id), {type, data: {labels, datasets: [dataset]}, options});
+}
+
+/* ===================== Ranking de IPs ===================== */
+function buildIpRanking() {
+  const stats = {};
+
+  for (const r of rows) {
+    const ip = r.cip;
+    if (isPrivateIP(ip)) continue;
+    let s = stats[ip];
+    if (!s) s = stats[ip] = {ip, req: 0, e400: 0, e401: 0, e403: 0, e404: 0, uris: new Set()};
+    s.req++;
+    if (r.status === "400") s.e400++;
+    else if (r.status === "401") s.e401++;
+    else if (r.status === "403") s.e403++;
+    else if (r.status === "404") s.e404++;
+    s.uris.add(r.uri);
+  }
+
+  rankingData = Object.values(stats).map((s) => {
+    let score = 0;
+    if (s.req > 50) score += 10;
+    score += s.e401 * 3 + s.e400 + s.e403 * 2 + s.e404 * 2;
+    if (s.uris.size > 20) score += 5;
+    return {ip: s.ip, req: s.req, e400: s.e400, e401: s.e401, e403: s.e403, e404: s.e404, uris: s.uris.size, score};
+  });
+
+  renderRanking();
+}
+
+function renderRanking() {
+  const {key, asc} = rankingSort;
+  const sorted = [...rankingData].sort((a, b) => {
+    const cmp = key === "ip" ? a.ip.localeCompare(b.ip, undefined, {numeric: true}) : a[key] - b[key];
+    return asc ? cmp : -cmp;
+  });
+
+  $("ipRanking").innerHTML = sorted
+    .map((s) => {
+      let risk = "Low";
+      let riskClass = "risk-low";
+      if (s.score > 50) {
+        risk = "High";
+        riskClass = "risk-high";
+      } else if (s.score >= 20) {
+        risk = "Medium";
+        riskClass = "risk-medium";
+      }
+      return `<tr class="text-center">
+<td><a href="#" class="ip-link" data-ip="${esc(s.ip)}">${esc(s.ip)}</a></td>
+<td>${s.req}</td>
+<td>${s.e400}</td>
+<td>${s.e401}</td>
+<td>${s.e403}</td>
+<td>${s.e404}</td>
+<td>${s.uris}</td>
+<td>${s.score}</td>
+<td class="${riskClass}"><span>${risk}</span></td>
+</tr>`;
+    })
+    .join("");
+}
+
+document.addEventListener("DOMContentLoaded", () => {
+  document.querySelectorAll("#tableRanking .sortable").forEach((header) => {
+    header.style.cursor = "pointer";
+    header.addEventListener("click", () => {
+      const key = header.dataset.key;
+      rankingSort = rankingSort.key === key ? {key, asc: !rankingSort.asc} : {key, asc: key === "ip"};
+      renderRanking();
+    });
+  });
+});
+
+/* ===================== Mapa ===================== */
+function initMap() {
+  if (map) map.remove();
   const argentinaCentro = [-38.4161, -63.6167];
   map = L.map("map").setView(argentinaCentro, 4);
 
@@ -482,209 +525,67 @@ function initMap() {
   markerCluster = L.markerClusterGroup();
   map.addLayer(markerCluster);
 
-  // 🔥 CLAVE
-  setTimeout(() => {
-    map.invalidateSize();
-  }, 0);
+  setTimeout(() => map.invalidateSize(), 0);
 }
 
-async function geolocateIPBatch(ip) {
-  try {
-    let r = await fetch(`https://get.geojs.io/v1/ip/geo.json?ip=${ip}`); //--> Ejemplo para hacer una llamada con muchas IPs.
-    let data = await r.json();
-    if (data) {
-      const resultado = data.map((item) => ({
-        ip: item.ip,
-        latitude: item.latitude,
-        longitude: item.longitude,
-        city: item.city ?? "",
-        country: item.country,
-        ISP: item.organization_name,
-      }));
-
-      return resultado;
+async function geolocateIPs(ips) {
+  const results = [];
+  for (let i = 0; i < ips.length; i += GEO_BATCH_SIZE) {
+    const batch = ips.slice(i, i + GEO_BATCH_SIZE);
+    try {
+      const r = await fetch(`https://get.geojs.io/v1/ip/geo.json?ip=${batch.join(",")}`);
+      if (!r.ok) throw new Error("HTTP " + r.status);
+      const data = await r.json();
+      (Array.isArray(data) ? data : [data]).forEach((item) =>
+        results.push({
+          ip: item.ip,
+          latitude: parseFloat(item.latitude),
+          longitude: parseFloat(item.longitude),
+          city: item.city ?? "",
+          country: item.country ?? "",
+          isp: item.organization_name ?? "",
+        }),
+      );
+    } catch (e) {
+      console.warn("Error en geolocalización. Detalle:", e);
     }
-  } catch (e) {
-    console.log("Error en geolocalización batch. Detalle:", e);
   }
-
-  return null;
-}
-
-function isPrivateIP(ip) {
-  return (
-    ip.startsWith("10.") ||
-    ip.startsWith("192.168.") ||
-    ip.startsWith("172.16.") ||
-    ip.startsWith("172.17.") ||
-    ip.startsWith("172.18.") ||
-    ip.startsWith("172.19.") ||
-    ip.startsWith("172.20.") ||
-    ip.startsWith("172.21.") ||
-    ip.startsWith("172.22.") ||
-    ip.startsWith("172.23.") ||
-    ip.startsWith("172.24.") ||
-    ip.startsWith("172.25.") ||
-    ip.startsWith("172.26.") ||
-    ip.startsWith("172.27.") ||
-    ip.startsWith("172.28.") ||
-    ip.startsWith("172.29.") ||
-    ip.startsWith("172.30.") ||
-    ip.startsWith("172.31.") ||
-    ip === "127.0.0.1" ||
-    ip === "::1"
-  );
+  return results;
 }
 
 async function buildMap() {
-  heatPoints = [];
+  const token = ++mapToken;
   initMap();
-  let counts = {};
 
-  rows.forEach((r) => {
+  const counts = {};
+  for (const r of rows) {
+    if (isPrivateIP(r.cip)) continue;
     counts[r.cip] = (counts[r.cip] || 0) + 1;
-  });
+  }
 
-  const uniqueValues = new Set(Object.values(counts));
-  const cantidadIpUnicas = uniqueValues.size;
-
-  let ips = Object.entries(counts)
+  const ips = Object.entries(counts)
     .sort((a, b) => b[1] - a[1])
-    .slice(0, cantidadIpUnicas > 100 ? 100 : cantidadIpUnicas)
+    .slice(0, MAP_MAX_IPS)
     .map((x) => x[0]);
-  const listadoIps = ips.join(",");
-  const resultadoGeolocation = await geolocateIPBatch(listadoIps);
 
-  for (let ip of resultadoGeolocation) {
-    if (isPrivateIP(ip.ip)) continue;
-    if (ip.latitude == "nil" && ip.longitude == "nil") continue;
-    let lat = parseFloat(ip.latitude);
-    let lon = parseFloat(ip.longitude);
-    let marker = L.marker([lat, lon]).bindPopup(`
-<b>${ip.ip}</b><br>
-<span><b>ISP:</b> ${ip.ISP}</span><br>
-${ip.city == "" ? "" : ip.city + ","} ${ip.country}
-`);
+  if (ips.length === 0) return;
+
+  const geo = await geolocateIPs(ips);
+  if (token !== mapToken) return; // se cargó otro archivo mientras tanto
+
+  const heatPoints = [];
+  for (const g of geo) {
+    if (isNaN(g.latitude) || isNaN(g.longitude)) continue;
+    const marker = L.marker([g.latitude, g.longitude]).bindPopup(
+      `<b>${esc(g.ip)}</b><br><span><b>ISP:</b> ${esc(g.isp)}</span><br>${g.city ? esc(g.city) + ", " : ""}${esc(g.country)}`,
+    );
     markerCluster.addLayer(marker);
-    heatPoints.push([lat, lon, 0.5]);
+    heatPoints.push([g.latitude, g.longitude, 0.5]);
   }
 
   if (heatPoints.length > 0) {
-    const validPoints = heatPoints.filter((p) => p && !isNaN(p[0]) && !isNaN(p[1]));
-
-    if (validPoints.length > 0) {
-      var heat = L.heatLayer(validPoints, {
-        radius: 25,
-        blur: 20,
-        maxZoom: 6,
-      }).addTo(map);
-    } else {
-      console.log("No hay coordenadas válidas para el mapa.");
-    }
+    L.heatLayer(heatPoints, {radius: 25, blur: 20, maxZoom: 6}).addTo(map);
   } else {
-    console.log("No hay datos para el heatmap.");
+    console.log("No hay coordenadas válidas para el mapa.");
   }
 }
-
-function showLoading(text = "Procesando...") {
-  document.getElementById("loadingText").innerText = text;
-  document.getElementById("loadingOverlay").style.display = "flex";
-}
-
-function hideLoading() {
-  document.getElementById("loadingOverlay").style.display = "none";
-}
-function applyFilters() {
-  const searchText = searchBox.value.toLowerCase();
-  const selectedStatus = statusFilter.value;
-  const selectedMethod = methodFilter.value;
-
-  const filtered = filteredRows.filter((log) => {
-    const matchesSearch = Object.values(log).join(" ").toLowerCase().includes(searchText);
-
-    const matchesStatus = !selectedStatus || log.status == selectedStatus;
-
-    const matchesMethod = !selectedMethod || log.method == selectedMethod;
-
-    return matchesSearch && matchesStatus && matchesMethod;
-  });
-  //populateFilters(filtered);
-  renderTable(filtered);
-}
-
-function populateFilters(logs) {
-  const select = document.getElementById("statusFilter");
-  const selectMethod = document.getElementById("methodFilter");
-
-  select.innerHTML = "";
-  selectMethod.innerHTML = "";
-
-  const defaultOption = document.createElement("option");
-  defaultOption.value = "";
-  defaultOption.textContent = "Todos los estados";
-  select.appendChild(defaultOption);
-
-  const defaultOptionMethod = document.createElement("option");
-  defaultOptionMethod.value = "";
-  defaultOptionMethod.textContent = "Todos los metodos";
-  selectMethod.appendChild(defaultOptionMethod);
-
-  const statusSet = new Set(logs.map((l) => l.status));
-
-  const methodSet = new Set(logs.map((l) => l.method));
-  const sortedMethod = Array.from(methodSet).sort();
-
-  const sortedStatus = Array.from(statusSet).sort();
-  if (statusSet.size > 1) {
-    sortedStatus.forEach((status) => {
-      const option = document.createElement("option");
-      option.value = status;
-      option.textContent = status;
-      select.appendChild(option);
-    });
-  }
-
-  sortedMethod.forEach((method) => {
-    const option = document.createElement("option");
-    option.value = method;
-    option.textContent = method;
-    selectMethod.appendChild(option);
-  });
-}
-
-document.addEventListener("DOMContentLoaded", () => {
-  let sortDirection = {};
-
-  document.querySelectorAll(".sortable").forEach((header) => {
-    header.style.cursor = "pointer";
-
-    header.addEventListener("click", () => {
-      const table = document.getElementById("tableRanking");
-      const tbody = table.querySelector("tbody");
-      const rows = Array.from(tbody.querySelectorAll("tr"));
-
-      const column = parseInt(header.dataset.column);
-
-      sortDirection[column] = !sortDirection[column];
-
-      rows.sort((a, b) => {
-        let aValue = a.cells[column].innerText.trim();
-        let bValue = b.cells[column].innerText.trim();
-
-        // Si son números, comparar como números
-        const aNum = parseFloat(aValue);
-        const bNum = parseFloat(bValue);
-
-        if (!isNaN(aNum) && !isNaN(bNum)) {
-          return sortDirection[column] ? aNum - bNum : bNum - aNum;
-        }
-
-        // Si son textos
-        return sortDirection[column] ? aValue.localeCompare(bValue) : bValue.localeCompare(aValue);
-      });
-
-      tbody.innerHTML = "";
-      rows.forEach((row) => tbody.appendChild(row));
-    });
-  });
-});
