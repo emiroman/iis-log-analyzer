@@ -463,6 +463,10 @@ $("btnFullscreenMap").addEventListener("click", () => {
 });
 document.addEventListener("fullscreenchange", () => setTimeout(() => map && map.invalidateSize(), 300));
 
+// Leyenda de colores: los tipos salen de las mismas constantes que pintan las filas
+$("legendAttack").textContent = "(" + [...ATTACK_TYPES].join(", ") + ")";
+$("legendScanner").textContent = "(" + [...SCANNER_TYPES].join(", ") + ")";
+
 // Pie de página: versión y enlace al repositorio (js/version.js)
 $("appVersion").textContent = "v" + APP_VERSION;
 $("appRepoLink").href = APP_REPO_URL;

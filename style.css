@@ -71,11 +71,27 @@ thead th {
     background: #1d3a56 !important;
 }
 
-[data-bs-theme="dark"] .attack td,
-[data-bs-theme="dark"] .scanner td,
-[data-bs-theme="dark"] .bot td {
-    background: transparent !important;
+/* Bootstrap pinta el fondo de cada celda (tapa el color de la fila): se deja transparente
+   en ambos temas para que se vea el color de la fila */
+.attack > td,
+.scanner > td,
+.bot > td {
+    background-color: transparent !important;
     color: inherit;
+}
+
+/* Leyenda de colores (usa las mismas clases .attack / .scanner / .bot que las filas) */
+.legend-swatch {
+    display: inline-block;
+    width: 1.1em;
+    height: 1.1em;
+    border: 1px solid rgba(128, 128, 128, 0.7);
+    border-radius: 3px;
+    vertical-align: -0.2em;
+}
+
+.legend-swatch.normal {
+    background: transparent;
 }
 
 .method-get {

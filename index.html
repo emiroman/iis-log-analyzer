@@ -101,6 +101,18 @@
                         <button id="btnExportJson" class="btn btn-outline-primary" type="button">Exportar JSON</button>
                     </div>
                 </div>
+                <div id="logLegend" class="card-body py-2 border-bottom small d-flex flex-wrap align-items-center gap-3"
+                    role="group" aria-label="Leyenda de colores de las filas">
+                    <strong>Colores de fila:</strong>
+                    <span><span class="legend-swatch attack" aria-hidden="true"></span> <strong>Ataque</strong>
+                        <span id="legendAttack" class="text-body-secondary"></span></span>
+                    <span><span class="legend-swatch scanner" aria-hidden="true"></span> <strong>Escaneo</strong>
+                        <span id="legendScanner" class="text-body-secondary"></span></span>
+                    <span><span class="legend-swatch bot" aria-hidden="true"></span> <strong>Bot</strong>
+                        <span class="text-body-secondary">(rastreadores automáticos)</span></span>
+                    <span><span class="legend-swatch normal" aria-hidden="true"></span> <strong>Sin color</strong>
+                        <span class="text-body-secondary">(tráfico normal y scripts)</span></span>
+                </div>
                 <div class="table-container logs-container">
                     <table class="table table-striped table-hover table-sm" id="logTable">
                         <thead class="table-dark">
