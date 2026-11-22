@@ -154,10 +154,18 @@ js/loader.js      Web Worker loading + fallback
 js/charts.js      Chart.js rendering
 js/map.js         Leaflet map, GeoJS lookup and cache
 js/app.js         UI controller (events, filters, table, export, theme)
+js/version.js     app version shown in the page footer
 tests/            automated tests (Node)
 ```
 
 Scripts are plain `<script>` files (not ES modules) so the page works when opened from disk (`file://`).
+
+## Versioning
+
+The running version is shown in the page footer (useful on GitHub Pages) and follows [semantic versioning](https://semver.org/). To release:
+
+1. Bump the version in **both** `js/version.js` and `package.json` (`npm test` fails if they differ).
+2. Commit, then tag it: `git tag vX.Y.Z` and `git push --tags` (optionally create a GitHub release with the notes).
 
 ## Tests
 

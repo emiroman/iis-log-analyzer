@@ -154,10 +154,18 @@ js/loader.js      carga con Web Worker + respaldo
 js/charts.js      gráficos con Chart.js
 js/map.js         mapa Leaflet, consulta a GeoJS y caché
 js/app.js         controlador de UI (eventos, filtros, tabla, exportación, tema)
+js/version.js     versión de la app que se muestra en el pie de página
 tests/            tests automáticos (Node)
 ```
 
 Los scripts son archivos `<script>` clásicos (no ES modules) para que la página funcione abierta desde disco (`file://`).
+
+## Versionado
+
+La versión en uso se muestra en el pie de la página (útil en GitHub Pages) y sigue [versionado semántico](https://semver.org/lang/es/). Para publicar una versión:
+
+1. Subir la versión en **ambos** `js/version.js` y `package.json` (`npm test` falla si difieren).
+2. Commitear y etiquetar: `git tag vX.Y.Z` y `git push --tags` (opcionalmente crear un release en GitHub con las notas).
 
 ## Tests
 

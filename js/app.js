@@ -463,4 +463,9 @@ $("btnFullscreenMap").addEventListener("click", () => {
 });
 document.addEventListener("fullscreenchange", () => setTimeout(() => map && map.invalidateSize(), 300));
 
+// Pie de página: versión y enlace al repositorio (js/version.js)
+$("appVersion").textContent = "v" + APP_VERSION;
+$("appRepoLink").href = APP_REPO_URL;
+$("appRepoLink").title = "Notas de cada versión: " + APP_REPO_URL + "/releases";
+
 initTheme();
