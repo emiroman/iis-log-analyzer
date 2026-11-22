@@ -29,6 +29,18 @@ test("parsea campos según la línea #Fields", () => {
   assert.equal(r.type, "");
 });
 
+test("lee sc-substatus (401.1 vs 401.2) y '-' o ausente => vacío", () => {
+  const text = [
+    "#Fields: date time c-ip cs-method cs-uri-stem sc-status sc-substatus",
+    "2026-03-07 10:00:00 1.2.3.4 GET /a 401 2",
+    "2026-03-07 10:00:01 1.2.3.4 GET /a 401 1",
+    "2026-03-07 10:00:02 1.2.3.4 GET /a 200 -",
+  ].join("\n");
+  assert.deepEqual(parser.parseText(text).map((r) => r.sub), ["2", "1", ""]);
+  const [r] = parser.parseText(HEADER + "\n" + LINE_OK); // este log no trae sc-substatus
+  assert.equal(r.sub, "");
+});
+
 test("detecta ataques usando la query string", () => {
   const [r] = parser.parseText(HEADER + "\n" + LINE_ATTACK);
   assert.equal(r.type, "SQL INJECTION");

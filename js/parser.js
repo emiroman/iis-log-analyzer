@@ -5,6 +5,7 @@
  *
  * Cada registro: {ts, cip, method, uri, query, status, version, ua, type, host, tt}
  *   ts: milisegundos UTC (0 si la fecha es inválida) | tt: time-taken en ms (-1 si no existe)
+ *   sub: sc-substatus ("" si el log no lo incluye)
  */
 function createParser(detector) {
   const {detectType, safeDecode} = detector;
@@ -31,6 +32,7 @@ function createParser(detector) {
         uri: pos("cs-uri-stem"),
         query: pos("cs-uri-query"),
         status: pos("sc-status"),
+        sub: pos("sc-substatus"),
         version: pos("cs-version"),
         ua: pos("cs(User-Agent)"),
         host: pos("cs-host"),
@@ -64,6 +66,8 @@ function createParser(detector) {
       let tt = ttRaw && ttRaw !== "-" ? parseInt(ttRaw, 10) : -1;
       if (isNaN(tt)) tt = -1;
 
+      const subRaw = at(p, idx.sub);
+
       batch.push({
         ts,
         cip: at(p, idx.ip),
@@ -71,6 +75,7 @@ function createParser(detector) {
         uri,
         query,
         status: at(p, idx.status),
+        sub: subRaw === "-" ? "" : subRaw, // sc-substatus (ej. 401.1 vs 401.2)
         version: at(p, idx.version),
         ua,
         type: detectType(ua, uri, query),
@@ -136,7 +141,7 @@ function createParser(detector) {
 
 /** Reemplaza ua/host/etc. por una única instancia compartida (ahorra memoria). */
 function internRows(batch, pool) {
-  const keys = ["cip", "method", "status", "version", "ua", "type", "host"];
+  const keys = ["cip", "method", "status", "sub", "version", "ua", "type", "host"];
   for (let i = 0; i < batch.length; i++) {
     const r = batch[i];
     for (let k = 0; k < keys.length; k++) {

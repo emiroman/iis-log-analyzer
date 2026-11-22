@@ -323,7 +323,7 @@ function alertHtml(ip, type, danger) {
 }
 
 function renderAlerts() {
-  let html = analysis.bruteforce.map((b) => alertHtml(b.ip, `POSSIBLE BRUTEFORCE (${b.count} 401)`, true)).join("");
+  let html = analysis.bruteforce.map((b) => alertHtml(b.ip, `POSSIBLE BRUTEFORCE (${b.count} failed logins in ${BRUTEFORCE_WINDOW_MS / 60000} min)`, true)).join("");
   const list = analysis.alerts;
   const shown = Math.min(list.length, MAX_ALERTS);
   for (let i = 0; i < shown; i++) html += alertHtml(list[i].ip, list[i].type, false);
@@ -335,12 +335,13 @@ function renderRanking() {
   const {key, asc} = rankingSort;
   $("ipRanking").innerHTML = sortRanking(rankingData, key, asc)
     .map((s) => {
-      const risk = riskOf(s.score);
+      const risk = s.risk;
       return `<tr class="text-center">
 <td><a href="#" class="ip-link" data-ip="${esc(s.ip)}">${esc(s.ip)}</a></td>
 <td>${s.req}</td><td>${s.e400}</td><td>${s.e401}</td><td>${s.e403}</td><td>${s.e404}</td>
 <td>${s.uris}</td><td>${s.score}</td>
 <td class="${risk.cls}"><span>${risk.label}</span></td>
+<td class="text-start small">${esc(s.reasons.join(" · "))}</td>
 </tr>`;
     })
     .join("");
@@ -426,8 +427,8 @@ $("btnExportJson").addEventListener("click", () => {
 $("btnExportRanking").addEventListener("click", () => {
   if (!rankingData.length) return;
   const sorted = sortRanking(rankingData, rankingSort.key, rankingSort.asc);
-  const headers = ["ip", "requests", "e400", "e401", "e403", "e404", "uris", "score", "riesgo"];
-  const records = sorted.map((s) => [s.ip, s.req, s.e400, s.e401, s.e403, s.e404, s.uris, s.score, riskOf(s.score).label]);
+  const headers = ["ip", "requests", "e400", "e401", "e403", "e404", "uris", "score", "riesgo", "motivos"];
+  const records = sorted.map((s) => [s.ip, s.req, s.e400, s.e401, s.e403, s.e404, s.uris, s.score, s.risk.label, s.reasons.join(" | ")]);
   downloadFile(`iis-ranking-ips-${stamp()}.csv`, "﻿" + toCsv(headers, records), "text/csv;charset=utf-8");
 });
 

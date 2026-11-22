@@ -94,9 +94,33 @@ Detection runs over the URI **and the query string** (`cs-uri-query`) using the 
 * Security tool user agents (sqlmap, nikto, nmap, ...)
 * Sensitive file / admin / WordPress / database panel discovery
 * Bots and scripts (curl, wget, python, ...)
-* Brute force: more than 20 `401` responses from the same IP
+* Brute force: at least 20 **failed logins** (`401.1`) from the same IP within 5 minutes. `401.2` (the Windows authentication challenge, normal on intranets with integrated auth) is ignored. If the log has no `sc-substatus` field, every `401` counts as a failed login.
 
 Detection is heuristic and may produce false positives or negatives.
+
+## IP risk ranking
+
+Only public IPs are ranked. Each IP gets a score and a risk level (Low / Medium / High) with a **reasons** column explaining it:
+
+| Signal | Points |
+| --- | --- |
+| Exploit attempt | 50 |
+| SQL injection / XSS / path traversal | 40 each type |
+| Security tool user agent | 30 |
+| Config / DB scan | 15 each type |
+| WordPress / admin scan | 10 each type |
+| Script (curl, python, ...) | 5 |
+| Bot | 0 (informational) |
+| Many distinct URIs with 404 and ≥ 30 % errors (scanner signature) | 1 per 3 URIs, up to 30 |
+| Repeated errors | 1 per 10, up to 10 |
+| Access probing (403 = 2, failed login = 3) | up to 30 |
+| Brute force | 40 |
+
+* **High**: score ≥ 50, **or any real attack** (exploit, SQLi, XSS, path traversal) **or brute force**, whatever the score.
+* **Medium**: score ≥ 20.
+* Request volume alone never raises the score, and a bot repeating the same 404 is not flagged as an attack.
+
+All weights and thresholds are constants (`SCORING`, `BRUTEFORCE_*`) at the top of `js/analysis.js`.
 
 ## Performance
 

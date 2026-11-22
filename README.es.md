@@ -94,9 +94,33 @@ La detección analiza la URI **y la query string** (`cs-uri-query`), tanto en te
 * User-Agents de herramientas de seguridad (sqlmap, nikto, nmap, ...)
 * Descubrimiento de archivos sensibles, paneles admin, WordPress y bases de datos
 * Bots y scripts (curl, wget, python, ...)
-* Fuerza bruta: más de 20 respuestas `401` desde la misma IP
+* Fuerza bruta: al menos 20 **logins fallidos** (`401.1`) desde la misma IP en 5 minutos. El `401.2` (desafío de autenticación de Windows, normal en intranets con autenticación integrada) se ignora. Si el log no tiene el campo `sc-substatus`, todo `401` cuenta como login fallido.
 
 La detección es heurística y puede generar falsos positivos o negativos.
+
+## Ranking de IPs por riesgo
+
+Solo se rankean IPs públicas. Cada IP recibe un score y un nivel de riesgo (Low / Medium / High) con una columna de **motivos** que lo explica:
+
+| Señal | Puntos |
+| --- | --- |
+| Intento de exploit | 50 |
+| SQL injection / XSS / path traversal | 40 cada tipo |
+| User-Agent de herramienta de seguridad | 30 |
+| Escaneo de configuración / base de datos | 15 cada tipo |
+| Escaneo de WordPress / paneles admin | 10 cada tipo |
+| Script (curl, python, ...) | 5 |
+| Bot | 0 (informativo) |
+| Muchas URIs distintas con 404 y ≥ 30 % de errores (firma de escáner) | 1 cada 3 URIs, hasta 30 |
+| Errores repetidos | 1 cada 10, hasta 10 |
+| Sondeo de accesos (403 = 2, login fallido = 3) | hasta 30 |
+| Fuerza bruta | 40 |
+
+* **High**: score ≥ 50, **o cualquier ataque real** (exploit, SQLi, XSS, path traversal) **o fuerza bruta**, sin importar el score.
+* **Medium**: score ≥ 20.
+* El volumen de requests por sí solo nunca sube el score, y un bot que repite el mismo 404 no se marca como ataque.
+
+Todos los pesos y umbrales son constantes (`SCORING`, `BRUTEFORCE_*`) al inicio de `js/analysis.js`.
 
 ## Rendimiento
 
