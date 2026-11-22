@@ -70,6 +70,16 @@ function analyze(rows, opts) {
   return {ips, alerts, bruteforce, slow, err5, hasTimeTaken};
 }
 
+/**
+ * Tráfico "legítimo" (para medir el uso real del sistema): no fue clasificado como
+ * ataque / escaneo / bot / script y la respuesta fue exitosa (2xx) o redirección/caché (3xx).
+ */
+function isLegitimate(r) {
+  if (r.type !== "" || r.status.length !== 3) return false;
+  const c = r.status.charCodeAt(0);
+  return c === 50 || c === 51; // "2" o "3"
+}
+
 function scoreOf(s) {
   let score = 0;
   if (s.req > 50) score += 10;
@@ -114,5 +124,5 @@ function topErrors(err5, n = 10) {
 
 if (typeof module !== "undefined") {
   // En Node (tests) isPrivateIP viene de utils.js
-  module.exports = {analyze, scoreOf, riskOf, buildRanking, sortRanking, topSlow, topErrors, BRUTEFORCE_THRESHOLD};
+  module.exports = {analyze, isLegitimate, scoreOf, riskOf, buildRanking, sortRanking, topSlow, topErrors, BRUTEFORCE_THRESHOLD};
 }

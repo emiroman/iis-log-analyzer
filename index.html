@@ -187,9 +187,13 @@
 
                 <div class="col-lg-4 mb-4">
                     <div class="card">
-                        <div class="card-header"><strong>Peticiones por Hora</strong></div>
+                        <div class="card-header"><strong>Peticiones legítimas por Hora</strong></div>
                         <div class="card-body">
-                            <canvas id="timelineChart" role="img" aria-label="Gráfico de peticiones por hora"></canvas>
+                            <canvas id="timelineChart" role="img" aria-label="Gráfico de peticiones legítimas por hora"></canvas>
+                            <p class="small text-body-secondary mt-2 mb-0">
+                                Solo uso real: se excluyen ataques, escaneos, bots, scripts y respuestas 4xx/5xx.
+                                <span id="hoursNote" class="d-block fw-semibold" aria-live="polite"></span>
+                            </p>
                         </div>
                     </div>
                 </div>

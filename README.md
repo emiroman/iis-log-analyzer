@@ -28,7 +28,7 @@ All processing is done **client-side (JavaScript)**.
 
 * **HTTP status code** distribution
 * **HTTP method** distribution
-* **Requests per hour**
+* **Legitimate requests per hour**: measures real system usage, so it excludes traffic detected as attacks, scans, bots or scripts and responses other than 2xx/3xx. It shows how many requests were considered (e.g. "12,400 of 16,151 (77 %)"). The other charts keep using all traffic.
 * Detected **attack types**
 
 Charts are generated using **Chart.js**.
@@ -163,6 +163,10 @@ All log-derived data is HTML-escaped before rendering, so malicious requests pre
 * country-based traffic analysis
 * configurable detection rules and brute-force threshold
 * virtualized log table and downloadable reports
+
+## Codebase map
+
+![Codebase map](codebase-map.png)
 
 ## Screenshots
 

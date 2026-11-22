@@ -4,9 +4,20 @@ const assert = require("node:assert/strict");
 
 // analysis.js usa isPrivateIP como global (en el navegador viene de utils.js)
 global.isPrivateIP = require("../js/utils.js").isPrivateIP;
-const {analyze, scoreOf, riskOf, buildRanking, sortRanking, topSlow, topErrors} = require("../js/analysis.js");
+const {analyze, isLegitimate, scoreOf, riskOf, buildRanking, sortRanking, topSlow, topErrors} = require("../js/analysis.js");
 
 const row = (o) => ({ts: 1, cip: "8.8.8.8", method: "GET", uri: "/", query: "", status: "200", version: "", ua: "", type: "", host: "", tt: -1, ...o});
+
+test("isLegitimate: sin tipo sospechoso y status 2xx/3xx", () => {
+  for (const status of ["200", "201", "204", "301", "302", "304"]) assert.equal(isLegitimate(row({status})), true, status);
+  for (const status of ["400", "401", "403", "404", "500", "503", "", "20", "abc"]) assert.equal(isLegitimate(row({status})), false, status);
+});
+
+test("isLegitimate: se descartan ataques, escaneos, bots y scripts aunque respondan 200", () => {
+  for (const type of ["SQL INJECTION", "XSS ATTACK", "PATH TRAVERSAL", "EXPLOIT ATTEMPT", "CONFIG SCAN", "ADMIN SCAN", "SECURITY TOOL", "BOT", "SCRIPT"]) {
+    assert.equal(isLegitimate(row({status: "200", type})), false, type);
+  }
+});
 
 test("excluye IPs privadas del ranking, alertas y fuerza bruta", () => {
   const rows = [row({cip: "10.0.0.1", type: "BOT", status: "401"}), row({cip: "8.8.8.8"})];

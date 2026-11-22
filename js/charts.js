@@ -5,7 +5,7 @@ const charts = {};
 const CHART_LABELS = {
   statusChart: "Códigos de Estado",
   methodChart: "Métodos HTTP",
-  timelineChart: "Peticiones por Hora",
+  timelineChart: "Peticiones legítimas por Hora",
   attackChart: "Tipos de Ataques",
 };
 const PALETTE = ["#0d6efd", "#198754", "#dc3545", "#ffc107", "#6f42c1", "#20c997", "#fd7e14", "#6c757d"];
@@ -56,16 +56,25 @@ function renderCharts(rows, tz) {
 
   const d = new Date(0);
   const utc = tz === "utc";
+  let legit = 0;
 
   for (let i = 0; i < rows.length; i++) {
     const r = rows[i];
     status[r.status] = (status[r.status] || 0) + 1;
     method[r.method] = (method[r.method] || 0) + 1;
     if (r.type) attacks[r.type] = (attacks[r.type] || 0) + 1;
-    if (r.ts > 0) {
+    // El gráfico por hora mide el uso real: solo tráfico legítimo (sin sospechosos ni errores)
+    if (r.ts > 0 && isLegitimate(r)) {
       d.setTime(r.ts);
       hours[(utc ? d.getUTCHours() : d.getHours()).toString().padStart(2, "0")]++;
+      legit++;
     }
+  }
+
+  const note = document.getElementById("hoursNote");
+  if (note) {
+    const pct = rows.length ? Math.round((legit / rows.length) * 100) : 0;
+    note.textContent = `${legit.toLocaleString("es-AR")} de ${rows.length.toLocaleString("es-AR")} peticiones (${pct} %) consideradas`;
   }
 
   drawChart("statusChart", "pie", status);

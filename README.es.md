@@ -28,7 +28,7 @@ Todo el procesamiento se realiza **del lado del cliente (JavaScript)**.
 
 * Distribución de **códigos de estado HTTP**
 * Distribución de **métodos HTTP**
-* **Peticiones por hora**
+* **Peticiones legítimas por hora**: mide el uso real del sistema, por lo que excluye el tráfico detectado como ataque, escaneo, bot o script y las respuestas que no sean 2xx/3xx. Muestra cuántas peticiones se consideraron (ej. "12.400 de 16.151 (77 %)"). Los demás gráficos siguen usando todo el tráfico.
 * Tipos de **ataques detectados**
 
 Los gráficos se generan utilizando **Chart.js**.
