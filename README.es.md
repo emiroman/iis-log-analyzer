@@ -57,13 +57,34 @@ Ejemplo:
 
 ## Filtrado
 
-Es posible filtrar registros mediante:
+Es posible filtrar registros mediante (todo combinable):
 
-* campo de búsqueda (con debounce)
-* selectores de método HTTP y código de estado (combinables con la búsqueda)
+* campo de búsqueda (con debounce; el índice se construye la primera vez que se usa)
+* selectores de método HTTP, código de estado y **tipo detectado**
+* **rango de fechas** (Desde / Hasta)
 * click sobre una IP en la tabla o en el ranking
 
-El resumen y los gráficos siguen los filtros activos. El ranking de IPs, las alertas y el mapa usan siempre el log completo.
+El resumen, los gráficos, el ranking de IPs, las alertas, las URIs lentas y los errores 5xx siguen los filtros activos. La tabla está **paginada** (100 / 250 / 500 / 1000 filas por página).
+
+## Zona horaria
+
+Las fechas se guardan en UTC (valor por defecto de IIS). El **selector de zona horaria** alterna entre la hora local del navegador y UTC en la tabla, el gráfico por hora y los filtros de fecha.
+
+## Reportes adicionales
+
+* **URIs más lentas** (promedio / máximo en ms) si el log incluye `time-taken`
+* **URIs con más errores 5xx**
+
+## Exportación
+
+* Registros filtrados a **CSV** o **JSON** (fechas en ISO UTC)
+* Ranking de IPs a **CSV**
+
+Las celdas CSV que empiezan con `=`, `+`, `-` o `@` se prefijan con una comilla simple para evitar inyección de fórmulas en planillas a partir de contenido malicioso del log.
+
+## Modo oscuro
+
+Botón en el encabezado. Por defecto sigue la preferencia del sistema y recuerda tu elección.
 
 ## Detección de ataques
 
@@ -79,46 +100,69 @@ La detección es heurística y puede generar falsos positivos o negativos.
 
 ## Rendimiento
 
-Optimizaciones implementadas:
+* el parseo corre en un **Web Worker** (la UI sigue respondiendo); los archivos se leen en trozos de 8 MB, por lo que no hay límite de tamaño de un único string
+* respaldo automático: si el Worker no está disponible se parsea en el hilo principal
+* tabla paginada (solo una página de filas en el DOM)
+* los strings repetidos (user agent, host, ...) se comparten en memoria
+* análisis en una sola pasada para ranking, alertas, fuerza bruta, URIs lentas y 5xx
+* índice de búsqueda perezoso y búsqueda con debounce
 
-* parseo en bloques que ceden el hilo a la UI, con indicador de progreso
-* cadenas de búsqueda precalculadas y búsqueda con debounce
-* reutilización de `Intl.DateTimeFormat`
-* tabla renderizada en una sola pasada (hasta 20.000 filas)
-* destrucción de instancias de gráficos
+Referencia (log sintético de 600k líneas / 73 MB, Chrome): ~5 s de carga, ~0,7 s para la primera búsqueda de texto, ~80 MB de heap JS.
 
 ## Tecnologías utilizadas
 
-* HTML5
-* CSS
-* JavaScript
-* Bootstrap
+* HTML5, CSS, JavaScript (sin build; se abre `index.html` directamente)
+* Bootstrap 5
 * Chart.js
-* GeoJS (Geolocation lookup API)
+* Leaflet (+ markercluster, heat)
+* GeoJS (API de geolocalización, solo al cargar el mapa)
+
+## Estructura del proyecto
+
+```
+index.html        página y layout
+style.css         estilos (claro / oscuro)
+js/utils.js       escape de HTML, IPs privadas, helpers CSV
+js/detect.js      detección de ataques / scanners / bots
+js/parser.js      parser de logs W3C (por trozos, apto para worker)
+js/analysis.js    ranking, alertas, fuerza bruta, URIs lentas, 5xx
+js/loader.js      carga con Web Worker + respaldo
+js/charts.js      gráficos con Chart.js
+js/map.js         mapa Leaflet, consulta a GeoJS y caché
+js/app.js         controlador de UI (eventos, filtros, tabla, exportación, tema)
+tests/            tests automáticos (Node)
+```
+
+Los scripts son archivos `<script>` clásicos (no ES modules) para que la página funcione abierta desde disco (`file://`).
+
+## Tests
+
+```
+npm test
+```
+
+Usa el test runner integrado de Node (18+), sin dependencias. Cubre detección, parseo, análisis y utilidades.
 
 ## Seguridad
 
 Los archivos de log **no se envían a ningún servidor**.
 Todo el análisis se realiza localmente en el navegador del usuario.
 
-La única excepción es el **mapa de origen**: las IPs públicas de los 100 clientes más activos (las privadas nunca se envían) se consultan contra la API de terceros [GeoJS](https://www.geojs.io/) para obtener su ubicación. El contenido del log (URIs, User-Agents, etc.) nunca se envía. Si no querés compartir esas IPs, no uses el mapa (por ejemplo, bloqueando la request).
+La única excepción es el **mapa de origen**, que es **opt-in**: solo al pulsar *Cargar mapa*, las IPs públicas de los 100 clientes más activos (las privadas nunca se envían) se consultan contra la API de terceros [GeoJS](https://www.geojs.io/). El contenido del log (URIs, User-Agents, etc.) nunca se envía. Los resultados se guardan en el `localStorage` del navegador por 30 días para evitar consultas repetidas.
 
 Todo dato proveniente del log se escapa como HTML antes de mostrarse, por lo que peticiones maliciosas presentes en un log no pueden ejecutar código en el visor.
 
 ## Limitaciones
 
-Debido a limitaciones del navegador:
-
-* archivos extremadamente grandes (>1M líneas) pueden requerir optimizaciones adicionales
-* el rendimiento depende de la memoria disponible en el navegador
+* todo el log parseado se mantiene en memoria: logs muy grandes (varios millones de líneas) dependen de la memoria disponible del navegador
+* la detección es heurística (ver arriba)
+* la búsqueda de texto no coincide con la fecha formateada; usar el filtro por rango de fechas
 
 ## Posibles mejoras futuras
 
-* mejoras en el rendimiento (para archivos de muchos registros)
 * análisis por país
-* detección de patrones de ataque más avanzados
-* filtros más complejos
-* mover el parseo a un Web Worker
+* reglas de detección y umbral de fuerza bruta configurables
+* tabla de logs virtualizada y reportes descargables
 
 ## Screenshots
 

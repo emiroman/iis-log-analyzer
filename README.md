@@ -57,13 +57,34 @@ Example:
 
 ## Filtering
 
-Log records can be filtered using:
+Log records can be filtered using (all combinable):
 
-* search field (debounced)
-* HTTP method and status code selectors (combinable with the search)
+* search field (debounced; the search index is built lazily on first use)
+* HTTP method, status code and **detected type** selectors
+* **date range** (From / To)
 * clicking an IP address in the table or in the ranking
 
-The summary and charts follow the active filters. The IP ranking, alerts and map always use the full log.
+Summary, charts, IP ranking, security alerts, slow URIs and 5xx tables all follow the active filters. The table is **paginated** (100 / 250 / 500 / 1000 rows per page).
+
+## Time zone
+
+Dates are stored in UTC (IIS default). The **time zone selector** switches the table, the hourly chart and the date filters between the browser's local time and UTC.
+
+## Extra reports
+
+* **Slowest URIs** (average / max ms) when the log includes `time-taken`
+* **URIs with the most 5xx errors**
+
+## Export
+
+* Filtered log records to **CSV** or **JSON** (dates in ISO UTC)
+* IP ranking to **CSV**
+
+CSV cells that start with `=`, `+`, `-` or `@` are prefixed with a single quote to prevent spreadsheet formula injection from malicious log content.
+
+## Dark mode
+
+Toggle in the header. It follows the system preference by default and remembers your choice.
 
 ## Attack Detection
 
@@ -79,49 +100,70 @@ Detection is heuristic and may produce false positives or negatives.
 
 ## Performance
 
-Implemented optimizations:
+* parsing runs in a **Web Worker** (the UI stays responsive); files are read in 8 MB slices, so there is no single-string size limit
+* automatic fallback to main-thread parsing if the Worker is unavailable
+* paginated table (only one page of rows in the DOM)
+* repeated strings (user agent, host, ...) are shared in memory
+* single-pass analysis for ranking, alerts, brute force, slow URIs and 5xx
+* lazy search index and debounced search
 
-* parsing in chunks that yield to the UI, with progress indicator
-* precomputed search strings and debounced search
-* reuse of `Intl.DateTimeFormat`
-* table rendered in a single pass (up to 20,000 rows)
-* destruction of chart instances
+Reference (synthetic log, 600k lines / 73 MB, Chrome): ~5 s to load, ~0.7 s for the first full-text search, ~80 MB of JS heap.
 
 ## Technologies Used
 
-* HTML5
-* CSS
-* JavaScript
-* Bootstrap
+* HTML5, CSS, JavaScript (no build step; open `index.html` directly)
+* Bootstrap 5
 * Chart.js
-* GeoJS (Geolocation lookup API)
+* Leaflet (+ markercluster, heat)
+* GeoJS (geolocation lookup API, only when the map is loaded)
+
+## Project structure
+
+```
+index.html        page and layout
+style.css         styles (light / dark)
+js/utils.js       escaping, private IPs, CSV helpers
+js/detect.js      attack / scanner / bot detection
+js/parser.js      W3C log parser (chunked, worker-safe)
+js/analysis.js    ranking, alerts, brute force, slow URIs, 5xx
+js/loader.js      Web Worker loading + fallback
+js/charts.js      Chart.js rendering
+js/map.js         Leaflet map, GeoJS lookup and cache
+js/app.js         UI controller (events, filters, table, export, theme)
+tests/            automated tests (Node)
+```
+
+Scripts are plain `<script>` files (not ES modules) so the page works when opened from disk (`file://`).
+
+## Tests
+
+```
+npm test
+```
+
+Uses the built-in Node test runner (Node 18+), no dependencies. Covers detection, parsing, analysis and utilities.
 
 ## Security
 
 Log files **are not sent to any server**.
 All analysis is performed locally in the user's browser.
 
-The only exception is the **origin map**: the public IP addresses of the 100 most active clients (private IPs are never sent) are queried against the third-party [GeoJS](https://www.geojs.io/) API to obtain their location. Log contents (URIs, user agents, etc.) are never sent. If you do not want to share those IPs, do not rely on the map (e.g. block the request).
+The only exception is the **origin map**, which is **opt-in**: only when you click *Load map*, the public IP addresses of the 100 most active clients (private IPs are never sent) are queried against the third-party [GeoJS](https://www.geojs.io/) API. Log contents (URIs, user agents, etc.) are never sent. Results are cached in the browser's `localStorage` for 30 days to avoid repeated requests.
 
 All log-derived data is HTML-escaped before rendering, so malicious requests present in a log cannot execute code in the viewer.
 
 ## Limitations
 
-Due to browser limitations:
-
-* extremely large files (>1M lines) may require additional optimizations
-* performance depends on the available browser memory
+* the whole parsed log is kept in memory: very large logs (several million lines) depend on the available browser memory
+* detection is heuristic (see above)
+* free-text search does not match the formatted date; use the date range filter instead
 
 ## Possible Future Improvements
 
-* performance improvements for very large log files
 * country-based traffic analysis
-* more advanced attack pattern detection
-* more complex filters
-* move parsing to a Web Worker
+* configurable detection rules and brute-force threshold
+* virtualized log table and downloadable reports
 
-## Codebase map
-![Codebase](codebase-map.png)
 ## Screenshots
 
 ### Overview
